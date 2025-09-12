@@ -1,8 +1,6 @@
-package main
+package game
 
-import (
-	"github.com/hajimehoshi/ebiten/v2"
-)
+import "github.com/hajimehoshi/ebiten/v2"
 
 type Player struct {
 	X, Y     float64
@@ -16,7 +14,7 @@ func NewPlayer(x, y float64) *Player {
 	return &Player{
 		X: x, Y: y,
 		Ego: 100, Flow: 10, Charisma: 5,
-		sprite: LoadImage("assets/sprite1.png"), // on charge le sprite
+		sprite: LoadImage("assets/sprite1.png"),
 	}
 }
 

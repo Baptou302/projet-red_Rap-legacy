@@ -1,8 +1,6 @@
-package main
+package game
 
-import (
-	"github.com/hajimehoshi/ebiten/v2"
-)
+import "github.com/hajimehoshi/ebiten/v2"
 
 type Enemy struct {
 	X, Y   float64
