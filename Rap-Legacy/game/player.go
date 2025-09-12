@@ -1,21 +1,21 @@
-package main
+package game
 
-import (
-	"image/color"
-
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-)
+import "github.com/hajimehoshi/ebiten/v2"
 
 type Player struct {
 	X, Y     float64
 	Ego      int
 	Flow     int
 	Charisma int
+	sprite   *ebiten.Image
 }
 
 func NewPlayer(x, y float64) *Player {
-	return &Player{X: x, Y: y, Ego: 100, Flow: 10, Charisma: 5}
+	return &Player{
+		X: x, Y: y,
+		Ego: 100, Flow: 10, Charisma: 5,
+		sprite: LoadImage("assets/sprite1.png"),
+	}
 }
 
 func (p *Player) Update() {
@@ -34,5 +34,7 @@ func (p *Player) Update() {
 }
 
 func (p *Player) Draw(screen *ebiten.Image) {
-	ebitenutil.DrawRect(screen, p.X, p.Y, 32, 32, color.RGBA{0, 255, 0, 255})
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(p.X, p.Y)
+	screen.DrawImage(p.sprite, opts)
 }
