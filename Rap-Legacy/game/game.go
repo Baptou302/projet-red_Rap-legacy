@@ -1,14 +1,24 @@
 package game
 
 import (
+	"fmt"
+	"image"
 	"image/color"
 	"log"
 	"os"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/projet-red_rap-legacy/menu"
 )
+
+// -----------------
+// Button structure
+// -----------------
+type Button struct {
+	Rect   image.Rectangle
+	Label  string
+	Action func()
+}
 
 // -----------------
 // GameState
@@ -26,10 +36,9 @@ const (
 // -----------------
 type Game struct {
 	state        GameState
-	menuSelected int
-	menuOptions  []string
+	menuButtons  []*Button
 	menuBg       *ebiten.Image
-	menu         *menu.Menu
+	menuSelected int
 	volume       int
 
 	player       *Player
@@ -56,12 +65,30 @@ func LoadImage(path string) *ebiten.Image {
 // -----------------
 func NewGame() *Game {
 	g := &Game{
-		state:       StateMenu,
-		menu:        menu.NewMenu(),
-		volume:      5,
-		menuOptions: []string{"Play", "Settings", "Quit"},
+		state:  StateMenu,
+		volume: 5,
 	}
 	g.menuBg = LoadImage("assets/menu_bg.png")
+
+	// Ici tu peux configurer les boutons
+	g.menuButtons = []*Button{
+		{
+			Rect:   image.Rect(689, 489, 1152, 453), // Coin supérieur gauche (800,400), coin inférieur droit (1120,460)
+			Label:  "Play",
+			Action: g.StartGame,
+		},
+		{
+			Rect:   image.Rect(800, 500, 1120, 560),
+			Label:  "Settings",
+			Action: func() { g.state = StateSettings },
+		},
+		{
+			Rect:   image.Rect(800, 600, 1120, 660),
+			Label:  "Quit",
+			Action: func() { os.Exit(0) },
+		},
+	}
+
 	return g
 }
 
@@ -110,32 +137,36 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 // Menu methods
 // -----------------
 func (g *Game) UpdateMenu() {
+	mx, my := ebiten.CursorPosition()
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+		for _, btn := range g.menuButtons {
+			if mx >= btn.Rect.Min.X && mx <= btn.Rect.Max.X &&
+				my >= btn.Rect.Min.Y && my <= btn.Rect.Max.Y {
+				btn.Action()
+			}
+		}
+	}
+
+	// Optionnel : navigation clavier
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
 		g.menuSelected--
 		if g.menuSelected < 0 {
-			g.menuSelected = len(g.menuOptions) - 1
+			g.menuSelected = len(g.menuButtons) - 1
 		}
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyDown) {
 		g.menuSelected++
-		if g.menuSelected >= len(g.menuOptions) {
+		if g.menuSelected >= len(g.menuButtons) {
 			g.menuSelected = 0
 		}
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyEnter) {
-		switch g.menuSelected {
-		case 0:
-			g.StartGame()
-		case 1:
-			g.state = StateSettings
-		case 2:
-			os.Exit(0)
-		}
+		g.menuButtons[g.menuSelected].Action()
 	}
 }
 
 func (g *Game) DrawMenu(screen *ebiten.Image) {
-	// Dessine le fond du menu
+	// Dessine le fond
 	if g.menuBg != nil {
 		opts := &ebiten.DrawImageOptions{}
 		screen.DrawImage(g.menuBg, opts)
@@ -143,14 +174,22 @@ func (g *Game) DrawMenu(screen *ebiten.Image) {
 		screen.Fill(color.RGBA{30, 30, 30, 255})
 	}
 
-	// Dessine les options du menu
-	for i, option := range g.menuOptions {
-		text := option
-		if i == g.menuSelected {
-			text = "> " + text
-		}
-		ebitenutil.DebugPrintAt(screen, text, 400, 200+60*i)
+	// Dessine les zones des boutons pour config (semi-transparent rouge)
+	for _, btn := range g.menuButtons {
+		ebitenutil.DrawRect(screen,
+			float64(btn.Rect.Min.X),
+			float64(btn.Rect.Min.Y),
+			float64(btn.Rect.Dx()),
+			float64(btn.Rect.Dy()),
+			color.RGBA{255, 0, 0, 100}, // Rouge semi-transparent
+		)
+		// Affiche le label
+		ebitenutil.DebugPrintAt(screen, btn.Label, btn.Rect.Min.X+10, btn.Rect.Min.Y+5)
 	}
+
+	// Affiche la position de la souris pour aider à configurer
+	mx, my := ebiten.CursorPosition()
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("Cursor X: %d Y: %d", mx, my))
 }
 
 // -----------------
@@ -210,7 +249,6 @@ func (g *Game) UpdatePlaying() {
 		g.player.Update()
 	}
 
-	// Détection collision avec les ennemis
 	for _, e := range g.enemies {
 		if int(g.player.X) == int(e.X) && int(g.player.Y) == int(e.Y) {
 			g.inBattle = true
