@@ -36,12 +36,12 @@ func (b *Battle) Update() {
 		if ebiten.IsKeyPressed(ebiten.KeyUp) {
 			b.selectedAttack--
 			if b.selectedAttack < 0 {
-				b.selectedAttack = 2
+				b.selectedAttack = 1
 			}
 		}
 		if ebiten.IsKeyPressed(ebiten.KeyDown) {
 			b.selectedAttack++
-			if b.selectedAttack > 2 {
+			if b.selectedAttack > 1 {
 				b.selectedAttack = 0
 			}
 		}
@@ -85,7 +85,7 @@ func (b *Battle) Draw(screen *ebiten.Image) {
 
 	// Stats
 	ebitenutil.DebugPrintAt(screen, "Votre égo: "+strconv.Itoa(b.player.Ego), 10, 10)
-	ebitenutil.DebugPrintAt(screen, "égo du rapeur adverse: "+strconv.Itoa(b.enemy.Ego), 500, 10)
+	ebitenutil.DebugPrintAt(screen, "égo rapeur adverse"+strconv.Itoa(b.enemy.Ego), 500, 10)
 
 	// Menu d'attaques
 	attacks := []string{"Punchline", "Flow", "Diss Track"}
