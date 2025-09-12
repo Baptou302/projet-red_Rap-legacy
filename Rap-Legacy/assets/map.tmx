@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="30" height="20" tilewidth="32" tileheight="32" infinite="0" nextlayerid="3" nextobjectid="1">
+ <imagelayer id="2" name="VILLE" offsetx="1.98952e-13" offsety="275.842" parallaxy="2">
+  <image source="../Downloads/Image3.png" width="1116" height="701"/>
+ </imagelayer>
+</map>
