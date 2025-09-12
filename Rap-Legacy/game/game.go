@@ -7,6 +7,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/projet-red_rap-legacy/menu"
 )
 
 // -----------------
@@ -26,8 +27,10 @@ const (
 type Game struct {
 	state        GameState
 	menuSelected int
-	menuOptions  []*ebiten.Image
+	menuOptions  []string
 	menuBg       *ebiten.Image
+	menu         *menu.Menu
+	volume       int
 
 	player       *Player
 	mapData      *Map
@@ -35,7 +38,6 @@ type Game struct {
 	inBattle     bool
 	currentEnemy *Enemy
 	battle       *Battle
-	volume       int
 }
 
 // -----------------
@@ -54,8 +56,10 @@ func LoadImage(path string) *ebiten.Image {
 // -----------------
 func NewGame() *Game {
 	g := &Game{
-		state:  StateMenu,
-		volume: 5,
+		state:       StateMenu,
+		menu:        menu.NewMenu(),
+		volume:      5,
+		menuOptions: []string{"Play", "Settings", "Quit"},
 	}
 	g.menuBg = LoadImage("assets/menu_bg.png")
 	return g
@@ -106,9 +110,6 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 // Menu methods
 // -----------------
 func (g *Game) UpdateMenu() {
-	if g.menuBg == nil {
-		return
-	}
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
 		g.menuSelected--
 		if g.menuSelected < 0 {
@@ -134,6 +135,7 @@ func (g *Game) UpdateMenu() {
 }
 
 func (g *Game) DrawMenu(screen *ebiten.Image) {
+	// Dessine le fond du menu
 	if g.menuBg != nil {
 		opts := &ebiten.DrawImageOptions{}
 		screen.DrawImage(g.menuBg, opts)
@@ -141,9 +143,9 @@ func (g *Game) DrawMenu(screen *ebiten.Image) {
 		screen.Fill(color.RGBA{30, 30, 30, 255})
 	}
 
-	// Affichage simplifié des options
-	for i := range g.menuOptions {
-		text := "Option " + string(i+'0')
+	// Dessine les options du menu
+	for i, option := range g.menuOptions {
+		text := option
 		if i == g.menuSelected {
 			text = "> " + text
 		}
