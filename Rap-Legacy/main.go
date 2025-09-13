@@ -9,6 +9,7 @@ import (
 
 func main() {
 	g := game.NewGame()
+	ebiten.SetWindowDecorated(false) // enlève la barre Windows
 	ebiten.SetWindowSize(1920, 1080)
 	ebiten.SetWindowTitle("Rap Legacy")
 	if err := ebiten.RunGame(g); err != nil {

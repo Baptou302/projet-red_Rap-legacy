@@ -1,7 +1,6 @@
 package game
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"log"
@@ -73,17 +72,17 @@ func NewGame() *Game {
 	// Ici tu peux configurer les boutons
 	g.menuButtons = []*Button{
 		{
-			Rect:   image.Rect(689, 489, 1152, 453), // Coin supérieur gauche (800,400), coin inférieur droit (1120,460)
+			Rect:   image.Rect(685, 490, 1160, 550), // New Game
 			Label:  "Play",
 			Action: g.StartGame,
 		},
 		{
-			Rect:   image.Rect(800, 500, 1120, 560),
+			Rect:   image.Rect(730, 600, 1110, 660), // Settings
 			Label:  "Settings",
 			Action: func() { g.state = StateSettings },
 		},
 		{
-			Rect:   image.Rect(800, 600, 1120, 660),
+			Rect:   image.Rect(820, 700, 1010, 765), // Quit
 			Label:  "Quit",
 			Action: func() { os.Exit(0) },
 		},
@@ -174,22 +173,6 @@ func (g *Game) DrawMenu(screen *ebiten.Image) {
 		screen.Fill(color.RGBA{30, 30, 30, 255})
 	}
 
-	// Dessine les zones des boutons pour config (semi-transparent rouge)
-	for _, btn := range g.menuButtons {
-		ebitenutil.DrawRect(screen,
-			float64(btn.Rect.Min.X),
-			float64(btn.Rect.Min.Y),
-			float64(btn.Rect.Dx()),
-			float64(btn.Rect.Dy()),
-			color.RGBA{255, 0, 0, 100}, // Rouge semi-transparent
-		)
-		// Affiche le label
-		ebitenutil.DebugPrintAt(screen, btn.Label, btn.Rect.Min.X+10, btn.Rect.Min.Y+5)
-	}
-
-	// Affiche la position de la souris pour aider à configurer
-	mx, my := ebiten.CursorPosition()
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("Cursor X: %d Y: %d", mx, my))
 }
 
 // -----------------

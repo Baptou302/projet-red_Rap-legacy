@@ -1,7 +1,6 @@
 package game
 
 import (
-	"image/color"
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -85,8 +84,6 @@ func (b *Battle) EnemyAttack() {
 
 // Draw affiche le combat à l'écran
 func (b *Battle) Draw(screen *ebiten.Image) {
-	// Fond combat
-	ebitenutil.DrawRect(screen, 0, 0, 640, 480, color.RGBA{50, 50, 50, 255})
 
 	// Stats
 	ebitenutil.DebugPrintAt(screen, "Votre égo: "+strconv.Itoa(b.player.Ego), 10, 10)
