@@ -46,6 +46,9 @@ type Game struct {
 	inBattle     bool
 	currentEnemy *Enemy
 	battle       *Battle
+
+	// Zone de combat
+	combatZone image.Rectangle
 }
 
 // -----------------
@@ -69,7 +72,7 @@ func NewGame() *Game {
 	}
 	g.menuBg = LoadImage("assets/menu_bg.png")
 
-	// Ici tu peux configurer les boutons
+	// Configuration des boutons
 	g.menuButtons = []*Button{
 		{
 			Rect:   image.Rect(685, 490, 1160, 550), // New Game
@@ -122,6 +125,23 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		for _, e := range g.enemies {
 			e.Draw(screen)
 		}
+
+		// Dessine la zone de combat en rouge
+		red := color.RGBA{255, 0, 0, 100} // semi-transparent
+		ebitenutil.DrawRect(screen,
+			float64(g.combatZone.Min.X),
+			float64(g.combatZone.Min.Y),
+			float64(g.combatZone.Dx()),
+			float64(g.combatZone.Dy()),
+			red,
+		)
+
+		// Notification si le joueur est dans la zone
+		playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
+		if playerRect.Overlaps(g.combatZone) && !g.inBattle {
+			ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 180)
+		}
+
 		if g.inBattle && g.battle != nil {
 			g.battle.Draw(screen)
 		}
@@ -146,7 +166,6 @@ func (g *Game) UpdateMenu() {
 		}
 	}
 
-	// Optionnel : navigation clavier
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
 		g.menuSelected--
 		if g.menuSelected < 0 {
@@ -165,14 +184,12 @@ func (g *Game) UpdateMenu() {
 }
 
 func (g *Game) DrawMenu(screen *ebiten.Image) {
-	// Dessine le fond
 	if g.menuBg != nil {
 		opts := &ebiten.DrawImageOptions{}
 		screen.DrawImage(g.menuBg, opts)
 	} else {
 		screen.Fill(color.RGBA{30, 30, 30, 255})
 	}
-
 }
 
 // -----------------
@@ -214,6 +231,9 @@ func (g *Game) StartGame() {
 		NewEnemy(400, 300, "Boss Rapper"),
 	}
 	g.inBattle = false
+
+	// Zone de combat
+	g.combatZone = image.Rect(200, 200, 300, 300)
 }
 
 // -----------------
@@ -232,11 +252,16 @@ func (g *Game) UpdatePlaying() {
 		g.player.Update()
 	}
 
-	for _, e := range g.enemies {
-		if int(g.player.X) == int(e.X) && int(g.player.Y) == int(e.Y) {
+	// Vérifie si le joueur est dans la zone de combat
+	playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
+	if playerRect.Overlaps(g.combatZone) {
+		if ebiten.IsKeyPressed(ebiten.KeyE) {
+			// Commence le combat
 			g.inBattle = true
-			g.currentEnemy = e
-			g.battle = NewBattle(g.player, e)
+			if len(g.enemies) > 0 {
+				g.currentEnemy = g.enemies[0]
+				g.battle = NewBattle(g.player, g.currentEnemy)
+			}
 		}
 	}
 }

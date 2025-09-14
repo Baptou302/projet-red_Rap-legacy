@@ -14,6 +14,7 @@ type Battle struct {
 	turn           int // 0 = joueur, 1 = ennemi
 	over           bool
 	selectedAttack int
+	active         bool // <- Nouveau : savoir si un combat est actif
 }
 
 // NewBattle crée une nouvelle instance de Battle
@@ -24,11 +25,20 @@ func NewBattle(p *Player, e *Enemy) *Battle {
 		turn:           0,
 		over:           false,
 		selectedAttack: 0,
+		active:         false,
 	}
 }
 
 // Update gère les tours et la logique du combat
 func (b *Battle) Update() {
+	if !b.active {
+		// Si aucun combat actif → attendre la touche E
+		if ebiten.IsKeyPressed(ebiten.KeyE) {
+			b.active = true
+		}
+		return
+	}
+
 	if b.over {
 		return
 	}
@@ -84,6 +94,12 @@ func (b *Battle) EnemyAttack() {
 
 // Draw affiche le combat à l'écran
 func (b *Battle) Draw(screen *ebiten.Image) {
+
+	if !b.active {
+		// Notification si aucun combat en cours
+		ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 200)
+		return
+	}
 
 	// Stats
 	ebitenutil.DebugPrintAt(screen, "Votre égo: "+strconv.Itoa(b.player.Ego), 10, 10)
