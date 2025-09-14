@@ -1,7 +1,10 @@
 package game
 
 import (
+	"image/png"
+	"os"
 	"strconv"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -14,11 +17,36 @@ type Battle struct {
 	turn           int // 0 = joueur, 1 = ennemi
 	over           bool
 	selectedAttack int
-	active         bool // <- Nouveau : savoir si un combat est actif
+	active         bool // savoir si un combat est actif
+
+	// --- Animations ---
+	playerAnim   *Animation
+	enemyAnim    *Animation
+	animPlaying  bool
+	animForEnemy bool // true = anim de l’ennemi, false = anim du joueur
+}
+
+// --------- UTILS POUR CHARGER SPRITESHEET ----------
+func LoadSpriteSheet(path string) *ebiten.Image {
+	f, _ := os.Open(path)
+	defer f.Close()
+	img, _ := png.Decode(f)
+	return ebiten.NewImageFromImage(img)
 }
 
 // NewBattle crée une nouvelle instance de Battle
 func NewBattle(p *Player, e *Enemy) *Battle {
+	// ⚠️ adapter selon ton spritesheet
+	nbLignes := 3
+	nbColonnes := 5
+	frameDelay := 100 * time.Millisecond
+
+	playerSheet := LoadSpriteSheet("assets/player_spritesheet.png")
+	playerAnim := NewAnimation(playerSheet, nbLignes, nbColonnes, frameDelay)
+
+	enemySheet := LoadSpriteSheet("assets/enemy_spritesheet.png")
+	enemyAnim := NewAnimation(enemySheet, nbLignes, nbColonnes, frameDelay)
+
 	return &Battle{
 		player:         p,
 		enemy:          e,
@@ -26,13 +54,16 @@ func NewBattle(p *Player, e *Enemy) *Battle {
 		over:           false,
 		selectedAttack: 0,
 		active:         false,
+		playerAnim:     playerAnim,
+		enemyAnim:      enemyAnim,
+		animPlaying:    false,
+		animForEnemy:   false,
 	}
 }
 
 // Update gère les tours et la logique du combat
 func (b *Battle) Update() {
 	if !b.active {
-		// Si aucun combat actif → attendre la touche E
 		if ebiten.IsKeyPressed(ebiten.KeyE) {
 			b.active = true
 		}
@@ -43,8 +74,28 @@ func (b *Battle) Update() {
 		return
 	}
 
+	// --- Si une animation est en cours ---
+	if b.animPlaying {
+		if b.animForEnemy {
+			b.enemyAnim.Update()
+			if b.enemyAnim.current == b.enemyAnim.frameCount-1 {
+				b.EnemyAttack()
+				b.turn = 0
+				b.animPlaying = false
+			}
+		} else {
+			b.playerAnim.Update()
+			if b.playerAnim.current == b.playerAnim.frameCount-1 {
+				b.PlayerAttack()
+				b.turn = 1
+				b.animPlaying = false
+			}
+		}
+		return
+	}
+
+	// --- Tour du joueur ---
 	if b.turn == 0 {
-		// Tour du joueur
 		if ebiten.IsKeyPressed(ebiten.KeyUp) {
 			b.selectedAttack--
 			if b.selectedAttack < 0 {
@@ -58,13 +109,17 @@ func (b *Battle) Update() {
 			}
 		}
 		if ebiten.IsKeyPressed(ebiten.KeyEnter) {
-			b.PlayerAttack()
-			b.turn = 1
+			b.animPlaying = true
+			b.animForEnemy = false
+			b.playerAnim.current = 0
+			b.playerAnim.lastUpdate = time.Now()
 		}
 	} else {
-		// Tour de l'ennemi
-		b.EnemyAttack()
-		b.turn = 0
+		// --- Tour de l’ennemi ---
+		b.animPlaying = true
+		b.animForEnemy = true
+		b.enemyAnim.current = 0
+		b.enemyAnim.lastUpdate = time.Now()
 	}
 
 	// Vérification de fin du combat
@@ -94,9 +149,7 @@ func (b *Battle) EnemyAttack() {
 
 // Draw affiche le combat à l'écran
 func (b *Battle) Draw(screen *ebiten.Image) {
-
 	if !b.active {
-		// Notification si aucun combat en cours
 		ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 200)
 		return
 	}
@@ -104,6 +157,15 @@ func (b *Battle) Draw(screen *ebiten.Image) {
 	// Stats
 	ebitenutil.DebugPrintAt(screen, "Votre égo: "+strconv.Itoa(b.player.Ego), 10, 10)
 	ebitenutil.DebugPrintAt(screen, "Égo adverse: "+strconv.Itoa(b.enemy.Ego), 500, 10)
+
+	// --- Afficher animations ---
+	if b.animPlaying {
+		if b.animForEnemy {
+			b.enemyAnim.Draw(screen, 400, 200) // position de l’ennemi
+		} else {
+			b.playerAnim.Draw(screen, 100, 200) // position du joueur
+		}
+	}
 
 	// Menu d'attaques
 	attacks := []string{"Punchline", "Flow", "Diss Track"}
