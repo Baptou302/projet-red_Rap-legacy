@@ -57,7 +57,7 @@ type Game struct {
 func LoadImage(path string) *ebiten.Image {
 	img, _, err := ebitenutil.NewImageFromFile(path)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Impossible de charger l'image :", path, err)
 	}
 	return img
 }
@@ -263,7 +263,7 @@ func (g *Game) UpdatePlaying() {
 			if len(g.enemies) > 0 {
 				g.currentEnemy = g.enemies[0]
 				g.battle = NewBattle(g.player, g.currentEnemy)
-				g.battle.active = true // ⚠️ Important pour que le combat s'affiche
+				g.battle.active = true // combat activé
 			}
 		}
 	}
