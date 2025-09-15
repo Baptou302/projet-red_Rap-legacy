@@ -116,34 +116,36 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	case StateSettings:
 		g.DrawSettings(screen)
 	case StatePlaying:
-		if g.mapData != nil {
-			g.mapData.Draw(screen)
-		}
-		if g.player != nil {
-			g.player.Draw(screen)
-		}
-		for _, e := range g.enemies {
-			e.Draw(screen)
-		}
-
-		// Dessine la zone de combat en rouge
-		red := color.RGBA{255, 0, 0, 100} // semi-transparent
-		ebitenutil.DrawRect(screen,
-			float64(g.combatZone.Min.X),
-			float64(g.combatZone.Min.Y),
-			float64(g.combatZone.Dx()),
-			float64(g.combatZone.Dy()),
-			red,
-		)
-
-		// Notification si le joueur est dans la zone
-		playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
-		if playerRect.Overlaps(g.combatZone) && !g.inBattle {
-			ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 180)
-		}
-
 		if g.inBattle && g.battle != nil {
+			// Affiche uniquement le combat
 			g.battle.Draw(screen)
+		} else {
+			// Affiche map, joueur et ennemis hors combat
+			if g.mapData != nil {
+				g.mapData.Draw(screen)
+			}
+			if g.player != nil {
+				g.player.Draw(screen)
+			}
+			for _, e := range g.enemies {
+				e.Draw(screen)
+			}
+
+			// Dessine la zone de combat en rouge
+			red := color.RGBA{255, 0, 0, 100} // semi-transparent
+			ebitenutil.DrawRect(screen,
+				float64(g.combatZone.Min.X),
+				float64(g.combatZone.Min.Y),
+				float64(g.combatZone.Dx()),
+				float64(g.combatZone.Dy()),
+				red,
+			)
+
+			// Notification si le joueur est dans la zone
+			playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
+			if playerRect.Overlaps(g.combatZone) && !g.inBattle {
+				ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 180)
+			}
 		}
 	}
 }
@@ -255,12 +257,13 @@ func (g *Game) UpdatePlaying() {
 	// Vérifie si le joueur est dans la zone de combat
 	playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
 	if playerRect.Overlaps(g.combatZone) {
-		if ebiten.IsKeyPressed(ebiten.KeyE) {
+		if ebiten.IsKeyPressed(ebiten.KeyE) && !g.inBattle {
 			// Commence le combat
 			g.inBattle = true
 			if len(g.enemies) > 0 {
 				g.currentEnemy = g.enemies[0]
 				g.battle = NewBattle(g.player, g.currentEnemy)
+				g.battle.active = true // ⚠️ Important pour que le combat s'affiche
 			}
 		}
 	}

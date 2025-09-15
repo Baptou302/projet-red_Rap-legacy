@@ -14,7 +14,7 @@ func NewPlayer(x, y float64) *Player {
 	return &Player{
 		X: x, Y: y,
 		Ego: 100, Flow: 10, Charisma: 5,
-		sprite: LoadImage("assets/sprite1.png"),
+		sprite: LoadImage("assets/player_idle.png"),
 	}
 }
 

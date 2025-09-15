@@ -10,42 +10,57 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
-// Battle représente un combat entre le joueur et un ennemi
 type Battle struct {
 	player         *Player
 	enemy          *Enemy
-	turn           int // 0 = joueur, 1 = ennemi
+	turn           int
 	over           bool
 	selectedAttack int
-	active         bool // savoir si un combat est actif
+	active         bool
 
-	// --- Animations ---
 	playerAnim   *Animation
 	enemyAnim    *Animation
 	animPlaying  bool
-	animForEnemy bool // true = anim de l’ennemi, false = anim du joueur
+	animForEnemy bool
+
+	playerIdle *ebiten.Image
+	enemyIdle  *ebiten.Image
+	background *ebiten.Image
 }
 
-// --------- UTILS POUR CHARGER SPRITESHEET ----------
-func LoadSpriteSheet(path string) *ebiten.Image {
-	f, _ := os.Open(path)
+// Charge une image et panic si problème
+func LoadSprite(path string) *ebiten.Image {
+	f, err := os.Open(path)
+	if err != nil {
+		panic("❌ Impossible d’ouvrir le fichier : " + path + " | " + err.Error())
+	}
 	defer f.Close()
-	img, _ := png.Decode(f)
+
+	img, err := png.Decode(f)
+	if err != nil {
+		panic("❌ Impossible de décoder l’image : " + path + " | " + err.Error())
+	}
+
 	return ebiten.NewImageFromImage(img)
 }
 
-// NewBattle crée une nouvelle instance de Battle
 func NewBattle(p *Player, e *Enemy) *Battle {
-	// ⚠️ adapter selon ton spritesheet
 	nbLignes := 3
 	nbColonnes := 5
-	frameDelay := 100 * time.Millisecond
+	frameDelay := 300 * time.Millisecond
 
-	playerSheet := LoadSpriteSheet("assets/player_spritesheet.png")
+	playerSheet := LoadSprite("assets/player_spritesheet.png")
 	playerAnim := NewAnimation(playerSheet, nbLignes, nbColonnes, frameDelay)
 
-	enemySheet := LoadSpriteSheet("assets/enemy_spritesheet.png")
+	enemySheet := LoadSprite("assets/enemy_spritesheet.png")
 	enemyAnim := NewAnimation(enemySheet, nbLignes, nbColonnes, frameDelay)
+
+	// Idle séparés
+	playerIdle := LoadSprite("assets/player_idle.png")
+	enemyIdle := LoadSprite("assets/enemy_idle.png")
+
+	// Fond combat
+	background := LoadSprite("assets/battle_bg.png")
 
 	return &Battle{
 		player:         p,
@@ -56,25 +71,17 @@ func NewBattle(p *Player, e *Enemy) *Battle {
 		active:         false,
 		playerAnim:     playerAnim,
 		enemyAnim:      enemyAnim,
-		animPlaying:    false,
-		animForEnemy:   false,
+		playerIdle:     playerIdle,
+		enemyIdle:      enemyIdle,
+		background:     background,
 	}
 }
 
-// Update gère les tours et la logique du combat
 func (b *Battle) Update() {
-	if !b.active {
-		if ebiten.IsKeyPressed(ebiten.KeyE) {
-			b.active = true
-		}
+	if !b.active || b.over {
 		return
 	}
 
-	if b.over {
-		return
-	}
-
-	// --- Si une animation est en cours ---
 	if b.animPlaying {
 		if b.animForEnemy {
 			b.enemyAnim.Update()
@@ -94,7 +101,7 @@ func (b *Battle) Update() {
 		return
 	}
 
-	// --- Tour du joueur ---
+	// Tour joueur
 	if b.turn == 0 {
 		if ebiten.IsKeyPressed(ebiten.KeyUp) {
 			b.selectedAttack--
@@ -115,79 +122,110 @@ func (b *Battle) Update() {
 			b.playerAnim.lastUpdate = time.Now()
 		}
 	} else {
-		// --- Tour de l’ennemi ---
+		// Tour ennemi
 		b.animPlaying = true
 		b.animForEnemy = true
 		b.enemyAnim.current = 0
 		b.enemyAnim.lastUpdate = time.Now()
 	}
 
-	// Vérification de fin du combat
 	if b.player.Ego <= 0 || b.enemy.Ego <= 0 {
 		b.over = true
 	}
 }
 
-// PlayerAttack applique l'attaque du joueur
 func (b *Battle) PlayerAttack() {
 	switch b.selectedAttack {
-	case 0: // Punchline
+	case 0:
 		b.enemy.Ego -= b.player.Flow
-	case 1: // Flow
+	case 1:
 		b.enemy.Ego -= b.player.Flow / 2
 		b.player.Flow++
-	case 2: // Diss Track
+	case 2:
 		b.enemy.Ego -= b.player.Flow * 2
 		b.player.Charisma--
 	}
 }
 
-// EnemyAttack applique l'attaque de l'ennemi
 func (b *Battle) EnemyAttack() {
 	b.player.Ego -= 5
 }
 
-// Draw affiche le combat à l'écran
 func (b *Battle) Draw(screen *ebiten.Image) {
 	if !b.active {
 		ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 200)
 		return
 	}
 
-	// Stats
-	ebitenutil.DebugPrintAt(screen, "Votre égo: "+strconv.Itoa(b.player.Ego), 10, 10)
-	ebitenutil.DebugPrintAt(screen, "Égo adverse: "+strconv.Itoa(b.enemy.Ego), 500, 10)
+	screenW, screenH := screen.Size()
 
-	// --- Afficher animations ---
+	// --- Fond combat ---
+	opBg := &ebiten.DrawImageOptions{}
+	bgW, bgH := b.background.Size()
+	scaleX := float64(screenW) / float64(bgW)
+	scaleY := float64(screenH) / float64(bgH)
+	opBg.GeoM.Scale(scaleX, scaleY)
+	screen.DrawImage(b.background, opBg)
+
+	// --- Infos Ego ---
+	ebitenutil.DebugPrintAt(screen, "Votre égo: "+strconv.Itoa(b.player.Ego), 10, 10)
+	ebitenutil.DebugPrintAt(screen, "Égo adverse: "+strconv.Itoa(b.enemy.Ego), screenW-200, 10)
+
+	// --- Placement persos ---
+	scale := 3.0
+	pw, ph := b.playerIdle.Size()
+	ew, eh := b.enemyIdle.Size()
+
+	// positions collées au sol
+	groundYPlayer := float64(screenH)
+	groundYEnemy := float64(screenH)
+
 	if b.animPlaying {
 		if b.animForEnemy {
-			b.enemyAnim.Draw(screen, 400, 200) // position de l’ennemi
+			b.enemyAnim.Draw(screen, float64(3*screenW/4), groundYEnemy, scale, true)
 		} else {
-			b.playerAnim.Draw(screen, 100, 200) // position du joueur
+			b.playerAnim.Draw(screen, float64(screenW/4), groundYPlayer, scale, true)
 		}
+	} else {
+		// Joueur idle
+		opPlayer := &ebiten.DrawImageOptions{}
+		opPlayer.GeoM.Scale(scale, scale)
+		opPlayer.GeoM.Translate(
+			float64(screenW/4)-float64(pw)*scale/2,
+			groundYPlayer-float64(ph)*scale,
+		)
+		screen.DrawImage(b.playerIdle, opPlayer)
+
+		// Ennemi idle
+		opEnemy := &ebiten.DrawImageOptions{}
+		opEnemy.GeoM.Scale(scale, scale)
+		opEnemy.GeoM.Translate(
+			float64(3*screenW/4)-float64(ew)*scale/2,
+			groundYEnemy-float64(eh)*scale,
+		)
+		screen.DrawImage(b.enemyIdle, opEnemy)
 	}
 
-	// Menu d'attaques
+	// --- Menu attaques en bas à gauche ---
 	attacks := []string{"Punchline", "Flow", "Diss Track"}
 	for i, a := range attacks {
 		text := a
 		if i == b.selectedAttack {
 			text = "> " + a
 		}
-		ebitenutil.DebugPrintAt(screen, text, 50, 350+i*20)
+		ebitenutil.DebugPrintAt(screen, text, 10, screenH-80+i*20)
 	}
 
-	// Message de fin
+	// --- Message fin ---
 	if b.over {
 		if b.player.Ego <= 0 {
-			ebitenutil.DebugPrintAt(screen, "Tu vas te prendre une sauce sur les réseaux !", 250, 200)
+			ebitenutil.DebugPrintAt(screen, "Tu vas te prendre une sauce sur les réseaux !", screenW/2-150, screenH/2)
 		} else {
-			ebitenutil.DebugPrintAt(screen, "Tu vas avoir un gros buzz !", 250, 200)
+			ebitenutil.DebugPrintAt(screen, "Tu vas avoir un gros buzz !", screenW/2-150, screenH/2)
 		}
 	}
 }
 
-// IsOver retourne true si le combat est terminé
 func (b *Battle) IsOver() bool {
 	return b.over
 }
