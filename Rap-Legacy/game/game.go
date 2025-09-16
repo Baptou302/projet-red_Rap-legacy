@@ -49,6 +49,9 @@ type Game struct {
 
 	// Zone de combat
 	combatZone image.Rectangle
+
+	// Inventaire
+	Inventaire *Inventaire
 }
 
 // -----------------
@@ -89,6 +92,11 @@ func NewGame() *Game {
 			Label:  "Quit",
 			Action: func() { os.Exit(0) },
 		},
+	}
+
+	// Création de l'inventaire
+	g.Inventaire = &Inventaire{
+		Items: []string{"Cristalline-Magique", "Micro", "téléphone", "sheet"},
 	}
 
 	return g
@@ -145,6 +153,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
 			if playerRect.Overlaps(g.combatZone) && !g.inBattle {
 				ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 180)
+			}
+
+			// Dessine l'inventaire
+			if g.Inventaire != nil {
+				g.Inventaire.Draw(screen)
 			}
 		}
 	}
@@ -242,6 +255,11 @@ func (g *Game) StartGame() {
 // Playing methods
 // -----------------
 func (g *Game) UpdatePlaying() {
+	// Met à jour l'inventaire
+	if g.Inventaire != nil {
+		g.Inventaire.Update()
+	}
+
 	if g.inBattle && g.battle != nil {
 		g.battle.Update()
 		if g.battle.IsOver() {
@@ -263,7 +281,7 @@ func (g *Game) UpdatePlaying() {
 			if len(g.enemies) > 0 {
 				g.currentEnemy = g.enemies[0]
 				g.battle = NewBattle(g.player, g.currentEnemy)
-				g.battle.active = true // ⚠️ Important pour que le combat s'affiche
+				g.battle.active = true
 			}
 		}
 	}
