@@ -62,10 +62,10 @@ func NewBattle() *Battle {
 
 	b := &Battle{
 		bg:           bg,
-		playerEgo:    90,
-		enemyEgo:     30,
+		playerEgo:    100,
+		enemyEgo:     100,
 		menuOptions:  []string{"Punchline", "Flow", "Diss Track"},
-		animSpeed:    250 * time.Millisecond,
+		animSpeed:    150 * time.Millisecond,
 		animPlaying:  false,
 		currentIndex: 0,
 		deadFinished: false,
@@ -332,7 +332,7 @@ func (b *Battle) Draw(screen *ebiten.Image) {
 
 	// UI : ego en haut
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Votre égo: %d", b.playerEgo), 10, 10)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Égo adverse: %d", b.enemyEgo), screenW-160, 10)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Égo adverse: %d", b.enemyEgo), screenW-125, 10)
 
 	// Menu attaques (affiché seulement si combat actif et pas de fin)
 	if !b.deadFinished {
