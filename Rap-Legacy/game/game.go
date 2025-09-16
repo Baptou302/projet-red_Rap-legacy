@@ -3,7 +3,6 @@ package game
 import (
 	"image"
 	"image/color"
-	"log"
 	"os"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -49,15 +48,18 @@ type Game struct {
 
 	// Zone de combat
 	combatZone image.Rectangle
+
+	// Inventaire
+	Inventaire *Inventaire
 }
 
 // -----------------
-// LoadImage helper (UNIQUE dans le package)
+// LoadImage helper
 // -----------------
 func LoadImage(path string) *ebiten.Image {
 	img, _, err := ebitenutil.NewImageFromFile(path)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	return img
 }
@@ -131,7 +133,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				e.Draw(screen)
 			}
 
-			// Dessine la zone de combat en rouge (semi-transparent)
+			// Zone de combat en rouge (semi-transparent)
 			red := color.RGBA{255, 0, 0, 100}
 			ebitenutil.DrawRect(screen,
 				float64(g.combatZone.Min.X),
@@ -147,6 +149,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				if playerRect.Overlaps(g.combatZone) && !g.inBattle {
 					ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 180)
 				}
+			}
+
+			// --- Inventaire ---
+			if g.Inventaire != nil {
+				g.Inventaire.DrawNote(screen) // note toujours visible
+				g.Inventaire.Draw(screen)     // affichage inventaire si ouvert
 			}
 		}
 	}
@@ -238,12 +246,25 @@ func (g *Game) StartGame() {
 
 	// Zone de combat
 	g.combatZone = image.Rect(200, 200, 300, 300)
+
+	// Inventaire
+	g.Inventaire = NewInventaire()
 }
 
 // -----------------
 // Playing methods
 // -----------------
 func (g *Game) UpdatePlaying() {
+	// Gestion de l’inventaire (TAB / ESC)
+	if g.Inventaire != nil {
+		if ebiten.IsKeyPressed(ebiten.KeyTab) {
+			g.Inventaire.Open = true
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+			g.Inventaire.Open = false
+		}
+	}
+
 	if g.inBattle && g.battle != nil {
 		g.battle.Update()
 		if g.battle.IsOver() {
