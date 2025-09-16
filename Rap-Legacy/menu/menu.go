@@ -11,6 +11,18 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
+// -----------------
+// Input helper partagé
+// -----------------
+var prevInput = map[ebiten.Key]bool{}
+
+func IsKeyJustPressed(key ebiten.Key) bool {
+	pressed := ebiten.IsKeyPressed(key)
+	wasPressed := prevInput[key]
+	prevInput[key] = pressed
+	return pressed && !wasPressed
+}
+
 const sampleRate = 44100
 
 var audioContext *audio.Context
@@ -23,7 +35,6 @@ type Menu struct {
 }
 
 func NewMenu() *Menu {
-	// Crée le contexte audio si ce n'est pas déjà fait
 	if audioContext == nil {
 		audioContext = audio.NewContext(sampleRate)
 	}
@@ -36,8 +47,7 @@ func NewMenu() *Menu {
 		buttonH:     80,
 	}
 
-	// Ouvre le fichier MP3
-	f, err := os.Open("../menu/menu.mp3") // à adapter selon ton chemin
+	f, err := os.Open("../menu/menu.mp3")
 	if err != nil {
 		log.Println("Impossible d'ouvrir le fichier MP3 :", err)
 		return m
@@ -48,10 +58,7 @@ func NewMenu() *Menu {
 		return m
 	}
 
-	// Boucle infinie
 	loop := audio.NewInfiniteLoop(stream, stream.Length())
-
-	// Crée le player et joue
 	m.audioPlayer, err = audioContext.NewPlayer(loop)
 	if err != nil {
 		log.Println("Impossible de créer le player audio :", err)
@@ -63,19 +70,19 @@ func NewMenu() *Menu {
 }
 
 func (m *Menu) Update() string {
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+	if IsKeyJustPressed(ebiten.KeyUp) {
 		m.menuSelected--
 		if m.menuSelected < 0 {
 			m.menuSelected = len(m.menuOptions) - 1
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+	if IsKeyJustPressed(ebiten.KeyDown) {
 		m.menuSelected++
 		if m.menuSelected >= len(m.menuOptions) {
 			m.menuSelected = 0
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyEnter) {
+	if IsKeyJustPressed(ebiten.KeyEnter) {
 		switch m.menuSelected {
 		case 0:
 			return "play"
