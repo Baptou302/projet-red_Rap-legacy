@@ -49,13 +49,10 @@ type Game struct {
 
 	// Zone de combat
 	combatZone image.Rectangle
-
-	// Inventaire
-	Inventaire *Inventaire
 }
 
 // -----------------
-// LoadImage helper
+// LoadImage helper (UNIQUE dans le package)
 // -----------------
 func LoadImage(path string) *ebiten.Image {
 	img, _, err := ebitenutil.NewImageFromFile(path)
@@ -92,11 +89,6 @@ func NewGame() *Game {
 			Label:  "Quit",
 			Action: func() { os.Exit(0) },
 		},
-	}
-
-	// Création de l'inventaire
-	g.Inventaire = &Inventaire{
-		Items: []string{"Cristalline-Magique", "Micro", "téléphone", "sheet"},
 	}
 
 	return g
@@ -139,8 +131,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				e.Draw(screen)
 			}
 
-			// Dessine la zone de combat en rouge
-			red := color.RGBA{255, 0, 0, 100} // semi-transparent
+			// Dessine la zone de combat en rouge (semi-transparent)
+			red := color.RGBA{255, 0, 0, 100}
 			ebitenutil.DrawRect(screen,
 				float64(g.combatZone.Min.X),
 				float64(g.combatZone.Min.Y),
@@ -150,14 +142,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			)
 
 			// Notification si le joueur est dans la zone
-			playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
-			if playerRect.Overlaps(g.combatZone) && !g.inBattle {
-				ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 180)
-			}
-
-			// Dessine l'inventaire
-			if g.Inventaire != nil {
-				g.Inventaire.Draw(screen)
+			if g.player != nil {
+				playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
+				if playerRect.Overlaps(g.combatZone) && !g.inBattle {
+					ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 180)
+				}
 			}
 		}
 	}
@@ -255,11 +244,6 @@ func (g *Game) StartGame() {
 // Playing methods
 // -----------------
 func (g *Game) UpdatePlaying() {
-	// Met à jour l'inventaire
-	if g.Inventaire != nil {
-		g.Inventaire.Update()
-	}
-
 	if g.inBattle && g.battle != nil {
 		g.battle.Update()
 		if g.battle.IsOver() {
@@ -273,15 +257,13 @@ func (g *Game) UpdatePlaying() {
 	}
 
 	// Vérifie si le joueur est dans la zone de combat
-	playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
-	if playerRect.Overlaps(g.combatZone) {
-		if ebiten.IsKeyPressed(ebiten.KeyE) && !g.inBattle {
-			// Commence le combat
-			g.inBattle = true
-			if len(g.enemies) > 0 {
-				g.currentEnemy = g.enemies[0]
-				g.battle = NewBattle(g.player, g.currentEnemy)
-				g.battle.active = true
+	if g.player != nil {
+		playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
+		if playerRect.Overlaps(g.combatZone) {
+			if ebiten.IsKeyPressed(ebiten.KeyE) && !g.inBattle {
+				// Commence le combat
+				g.inBattle = true
+				g.battle = NewBattle()
 			}
 		}
 	}

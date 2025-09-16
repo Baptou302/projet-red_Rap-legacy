@@ -51,22 +51,24 @@ func (a *Animation) Update() {
 	}
 }
 
-// Affiche la frame courante
-// x, y = position
-// scale = facteur d'agrandissement
-// anchorBottom = true → colle au sol
-func (a *Animation) Draw(screen *ebiten.Image, x, y float64, scale float64, anchorBottom bool) {
+// Draw affiche la frame courante.
+// x : position horizontale où centrer le sprite (centre X).
+// y : position verticale de référence.
+// scale : facteur d'agrandissement.
+// anchorBottom : si true -> y est la coordonnée du sol (bas), sinon y est le centre vertical.
+func (a *Animation) Draw(screen *ebiten.Image, x, y, scale float64, anchorBottom bool) {
 	frame := a.frames[a.current]
 	w, h := frame.Size()
 
 	op := &ebiten.DrawImageOptions{}
+	// Appliquer le scale d'abord
 	op.GeoM.Scale(scale, scale)
 
 	if anchorBottom {
-		// On centre en X mais colle en bas
+		// Centré en X, bas de l'image aligné sur y (le "sol")
 		op.GeoM.Translate(x-float64(w)*scale/2, y-float64(h)*scale)
 	} else {
-		// Ancien comportement (centré milieu)
+		// Centré en X et Y (comportement classique)
 		op.GeoM.Translate(x-float64(w)*scale/2, y-float64(h)*scale/2)
 	}
 

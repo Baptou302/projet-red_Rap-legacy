@@ -1,8 +1,8 @@
 package game
 
 import (
-	"image/png"
-	"os"
+	"fmt"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -10,222 +10,344 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
+// Charge une série d’images (ex: "player_attack1.png", "player_attack2.png", …)
+func LoadAnimation(prefix string, count int) []*ebiten.Image {
+	var frames []*ebiten.Image
+	for i := 1; i <= count; i++ {
+		path := filepath.Join("assets", prefix+strconv.Itoa(i)+".png")
+		frames = append(frames, LoadImage(path)) // utilise LoadImage définie dans game.go
+	}
+	return frames
+}
+
+// Battle (frame-by-frame images)
 type Battle struct {
-	player         *Player
-	enemy          *Enemy
-	turn           int
-	over           bool
-	selectedAttack int
-	active         bool
+	bg *ebiten.Image
 
-	playerAnim   *Animation
-	enemyAnim    *Animation
-	animPlaying  bool
-	animForEnemy bool
+	playerEgo int
+	enemyEgo  int
 
+	menuOptions    []string
+	selectedOption int
+
+	// Animations
 	playerIdle *ebiten.Image
 	enemyIdle  *ebiten.Image
-	background *ebiten.Image
+
+	playerAtk  [][]*ebiten.Image
+	enemyAtk   [][]*ebiten.Image
+	playerHit  []*ebiten.Image
+	enemyHit   []*ebiten.Image
+	playerDead []*ebiten.Image
+	enemyDead  []*ebiten.Image
+
+	// Contrôle animation
+	currentFrames []*ebiten.Image
+	currentIndex  int
+	animStart     time.Time
+	animSpeed     time.Duration
+	animPlaying   bool
+	attacker      string // "player" / "enemy" / "dead_player" / "dead_enemy"
+
+	// Gestion mort + sortie
+	deadFinished  bool
+	deadFrame     *ebiten.Image
+	endMsg        *ebiten.Image
+	exitRequested bool
 }
 
-// Charge une image et panic si problème
-func LoadSprite(path string) *ebiten.Image {
-	f, err := os.Open(path)
-	if err != nil {
-		panic("❌ Impossible d’ouvrir le fichier : " + path + " | " + err.Error())
-	}
-	defer f.Close()
+// NewBattle (sans paramètres — compatible avec game.go)
+func NewBattle() *Battle {
+	bg := LoadImage("assets/battle_bg.png")
 
-	img, err := png.Decode(f)
-	if err != nil {
-		panic("❌ Impossible de décoder l’image : " + path + " | " + err.Error())
+	b := &Battle{
+		bg:           bg,
+		playerEgo:    90,
+		enemyEgo:     30,
+		menuOptions:  []string{"Punchline", "Flow", "Diss Track"},
+		animSpeed:    250 * time.Millisecond,
+		animPlaying:  false,
+		currentIndex: 0,
+		deadFinished: false,
 	}
 
-	return ebiten.NewImageFromImage(img)
+	// Idle
+	b.playerIdle = LoadImage("assets/player_idle.png")
+	b.enemyIdle = LoadImage("assets/enemy_idle.png")
+
+	// Attaques
+	b.playerAtk = [][]*ebiten.Image{
+		LoadAnimation("player_attack", 5),
+	}
+	b.enemyAtk = [][]*ebiten.Image{
+		LoadAnimation("enemy_attack", 5),
+	}
+
+	// Hit
+	b.playerHit = LoadAnimation("player_hited", 4)
+	b.enemyHit = LoadAnimation("enemy_hited", 4)
+
+	// Dead
+	b.playerDead = LoadAnimation("player_dead", 5)
+	b.enemyDead = LoadAnimation("enemy_dead", 5)
+
+	// Image de fin (mets ton image dans assets sous ce nom exact)
+	b.endMsg = LoadImage("assets/combat_end.png")
+	if b.endMsg == nil {
+		println("⚠️ Impossible de charger assets/combat_end.png (vérifie le nom et le dossier)")
+	}
+
+	return b
 }
 
-func NewBattle(p *Player, e *Enemy) *Battle {
-	nbLignes := 3
-	nbColonnes := 5
-	frameDelay := 300 * time.Millisecond
-
-	playerSheet := LoadSprite("assets/player_spritesheet.png")
-	playerAnim := NewAnimation(playerSheet, nbLignes, nbColonnes, frameDelay)
-
-	enemySheet := LoadSprite("assets/enemy_spritesheet.png")
-	enemyAnim := NewAnimation(enemySheet, nbLignes, nbColonnes, frameDelay)
-
-	// Idle séparés
-	playerIdle := LoadSprite("assets/player_idle.png")
-	enemyIdle := LoadSprite("assets/enemy_idle.png")
-
-	// Fond combat
-	background := LoadSprite("assets/battle_bg.png")
-
-	return &Battle{
-		player:         p,
-		enemy:          e,
-		turn:           0,
-		over:           false,
-		selectedAttack: 0,
-		active:         false,
-		playerAnim:     playerAnim,
-		enemyAnim:      enemyAnim,
-		playerIdle:     playerIdle,
-		enemyIdle:      enemyIdle,
-		background:     background,
-	}
-}
-
+// Update logique
 func (b *Battle) Update() {
-	if !b.active || b.over {
-		return
-	}
-
-	if b.animPlaying {
-		if b.animForEnemy {
-			b.enemyAnim.Update()
-			if b.enemyAnim.current == b.enemyAnim.frameCount-1 {
-				b.EnemyAttack()
-				b.turn = 0
-				b.animPlaying = false
-			}
-		} else {
-			b.playerAnim.Update()
-			if b.playerAnim.current == b.playerAnim.frameCount-1 {
-				b.PlayerAttack()
-				b.turn = 1
-				b.animPlaying = false
-			}
-		}
-		return
-	}
-
-	// Tour joueur
-	if b.turn == 0 {
-		if ebiten.IsKeyPressed(ebiten.KeyUp) {
-			b.selectedAttack--
-			if b.selectedAttack < 0 {
-				b.selectedAttack = 2
-			}
-		}
-		if ebiten.IsKeyPressed(ebiten.KeyDown) {
-			b.selectedAttack++
-			if b.selectedAttack > 2 {
-				b.selectedAttack = 0
-			}
-		}
+	// Si la mort est déjà finie → on attend Enter pour demander la sortie
+	if b.deadFinished {
 		if ebiten.IsKeyPressed(ebiten.KeyEnter) {
-			b.animPlaying = true
-			b.animForEnemy = false
-			b.playerAnim.current = 0
-			b.playerAnim.lastUpdate = time.Now()
+			b.exitRequested = true
 		}
-	} else {
-		// Tour ennemi
-		b.animPlaying = true
-		b.animForEnemy = true
-		b.enemyAnim.current = 0
-		b.enemyAnim.lastUpdate = time.Now()
-	}
-
-	if b.player.Ego <= 0 || b.enemy.Ego <= 0 {
-		b.over = true
-	}
-}
-
-func (b *Battle) PlayerAttack() {
-	switch b.selectedAttack {
-	case 0:
-		b.enemy.Ego -= b.player.Flow
-	case 1:
-		b.enemy.Ego -= b.player.Flow / 2
-		b.player.Flow++
-	case 2:
-		b.enemy.Ego -= b.player.Flow * 2
-		b.player.Charisma--
-	}
-}
-
-func (b *Battle) EnemyAttack() {
-	b.player.Ego -= 5
-}
-
-func (b *Battle) Draw(screen *ebiten.Image) {
-	if !b.active {
-		ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 200)
 		return
+	}
+
+	// Si on est en train de jouer une animation (attaque ou mort)
+	if b.animPlaying {
+		if time.Since(b.animStart) > b.animSpeed {
+			b.animStart = time.Now()
+			b.currentIndex++
+			// Si on a dépassé la dernière frame
+			if b.currentIndex >= len(b.currentFrames) {
+				// Cas : c'était une animation de mort
+				if b.attacker == "dead_enemy" || b.attacker == "dead_player" {
+					// garder la dernière frame et passer en mode "deadFinished"
+					b.deadFinished = true
+					if len(b.currentFrames) > 0 {
+						b.deadFrame = b.currentFrames[len(b.currentFrames)-1]
+					}
+					b.animPlaying = false
+					b.currentIndex = 0
+					return
+				}
+
+				// Cas : c'était une attaque normale (player ou enemy)
+				if b.attacker == "player" {
+					b.enemyEgo -= 10
+					// si mort -> lancer anim de mort
+					if b.enemyEgo <= 0 {
+						b.LaunchDeath("enemy")
+						return
+					}
+				} else if b.attacker == "enemy" {
+					b.playerEgo -= 5
+					if b.playerEgo <= 0 {
+						b.LaunchDeath("player")
+						return
+					}
+				}
+
+				// Fin de l'animation d'attaque : arrêter l'anim et revenir au statut idle
+				b.animPlaying = false
+				b.currentIndex = 0
+			}
+		}
+		return
+	}
+
+	// Navigation menu (basique)
+	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
+		b.selectedOption++
+		if b.selectedOption >= len(b.menuOptions) {
+			b.selectedOption = 0
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
+		b.selectedOption--
+		if b.selectedOption < 0 {
+			b.selectedOption = len(b.menuOptions) - 1
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	// Lancer attaque joueur
+	if ebiten.IsKeyPressed(ebiten.KeyEnter) {
+		b.LaunchAttack("player")
+	}
+}
+
+func (b *Battle) LaunchAttack(attacker string) {
+	b.animPlaying = true
+	b.animStart = time.Now()
+	b.currentIndex = 0
+	b.attacker = attacker
+
+	if attacker == "player" {
+		b.currentFrames = b.playerAtk[0]
+	} else {
+		b.currentFrames = b.enemyAtk[0]
+	}
+}
+
+func (b *Battle) LaunchDeath(who string) {
+	b.animPlaying = true
+	b.animStart = time.Now()
+	b.currentIndex = 0
+
+	if who == "player" {
+		b.attacker = "dead_player"
+		b.currentFrames = b.playerDead
+		// deadFrame sera mis à la fin de l'anim par Update()
+	} else {
+		b.attacker = "dead_enemy"
+		b.currentFrames = b.enemyDead
+	}
+}
+
+// Draw
+func (b *Battle) Draw(screen *ebiten.Image) {
+	// Background
+	if b.bg != nil {
+		screen.DrawImage(b.bg, &ebiten.DrawImageOptions{})
 	}
 
 	screenW, screenH := screen.Size()
 
-	// --- Fond combat ---
-	opBg := &ebiten.DrawImageOptions{}
-	bgW, bgH := b.background.Size()
-	scaleX := float64(screenW) / float64(bgW)
-	scaleY := float64(screenH) / float64(bgH)
-	opBg.GeoM.Scale(scaleX, scaleY)
-	screen.DrawImage(b.background, opBg)
-
-	// --- Infos Ego ---
-	ebitenutil.DebugPrintAt(screen, "Votre égo: "+strconv.Itoa(b.player.Ego), 10, 10)
-	ebitenutil.DebugPrintAt(screen, "Égo adverse: "+strconv.Itoa(b.enemy.Ego), screenW-200, 10)
-
-	// --- Placement persos ---
 	scale := 3.0
-	pw, ph := b.playerIdle.Size()
-	ew, eh := b.enemyIdle.Size()
+	playerX := float64(screenW/2) - 400
+	enemyX := float64(screenW/2) + 150
+	groundY := float64(screenH - 400)
 
-	// positions collées au sol
-	groundYPlayer := float64(screenH)
-	groundYEnemy := float64(screenH)
-
-	if b.animPlaying {
-		if b.animForEnemy {
-			b.enemyAnim.Draw(screen, float64(3*screenW/4), groundYEnemy, scale, true)
-		} else {
-			b.playerAnim.Draw(screen, float64(screenW/4), groundYPlayer, scale, true)
+	// Affichage pendant animation
+	if b.animPlaying && len(b.currentFrames) > 0 {
+		idx := b.currentIndex
+		if idx >= len(b.currentFrames) {
+			idx = len(b.currentFrames) - 1
 		}
+		frame := b.currentFrames[idx]
+
+		switch b.attacker {
+		case "player":
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(playerX, groundY)
+			screen.DrawImage(frame, op)
+
+			// Ennemi encaisse (frame hit si dispo)
+			if b.enemyEgo > 0 && len(b.enemyHit) > 0 {
+				hitFrame := b.enemyHit[idx%len(b.enemyHit)]
+				op2 := &ebiten.DrawImageOptions{}
+				op2.GeoM.Scale(scale, scale)
+				op2.GeoM.Translate(enemyX, groundY)
+				screen.DrawImage(hitFrame, op2)
+			}
+
+		case "enemy":
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(enemyX, groundY)
+			screen.DrawImage(frame, op)
+
+			// Player encaisse
+			if b.playerEgo > 0 && len(b.playerHit) > 0 {
+				hitFrame := b.playerHit[idx%len(b.playerHit)]
+				op2 := &ebiten.DrawImageOptions{}
+				op2.GeoM.Scale(scale, scale)
+				op2.GeoM.Translate(playerX, groundY)
+				screen.DrawImage(hitFrame, op2)
+			}
+
+		case "dead_player":
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(playerX, groundY)
+			screen.DrawImage(frame, op)
+
+			op2 := &ebiten.DrawImageOptions{}
+			op2.GeoM.Scale(scale, scale)
+			op2.GeoM.Translate(enemyX, groundY)
+			screen.DrawImage(b.enemyIdle, op2)
+
+		case "dead_enemy":
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(enemyX, groundY)
+			screen.DrawImage(frame, op)
+
+			op2 := &ebiten.DrawImageOptions{}
+			op2.GeoM.Scale(scale, scale)
+			op2.GeoM.Translate(playerX, groundY)
+			screen.DrawImage(b.playerIdle, op2)
+		}
+
+	} else if b.deadFinished && b.deadFrame != nil {
+		// Affiche dernier sprite de mort (fixe)
+		if b.attacker == "dead_enemy" {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(enemyX, groundY)
+			screen.DrawImage(b.deadFrame, op)
+
+			op2 := &ebiten.DrawImageOptions{}
+			op2.GeoM.Scale(scale, scale)
+			op2.GeoM.Translate(playerX, groundY)
+			screen.DrawImage(b.playerIdle, op2)
+
+		} else if b.attacker == "dead_player" {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(playerX, groundY)
+			screen.DrawImage(b.deadFrame, op)
+
+			op2 := &ebiten.DrawImageOptions{}
+			op2.GeoM.Scale(scale, scale)
+			op2.GeoM.Translate(enemyX, groundY)
+			screen.DrawImage(b.enemyIdle, op2)
+		}
+
+		// Affiche image de fin (centrée + réduite si besoin)
+		if b.endMsg != nil {
+			opMsg := &ebiten.DrawImageOptions{}
+			w, h := b.endMsg.Size()
+
+			endScale := 0.6 // ajuste si trop grand/petit
+			opMsg.GeoM.Scale(endScale, endScale)
+			opMsg.GeoM.Translate(
+				float64(screenW/2)-(float64(w)*endScale)/2,
+				float64(screenH/2)-(float64(h)*endScale)/2,
+			)
+			screen.DrawImage(b.endMsg, opMsg)
+		}
+
 	} else {
-		// Joueur idle
-		opPlayer := &ebiten.DrawImageOptions{}
-		opPlayer.GeoM.Scale(scale, scale)
-		opPlayer.GeoM.Translate(
-			float64(screenW/4)-float64(pw)*scale/2,
-			groundYPlayer-float64(ph)*scale,
-		)
-		screen.DrawImage(b.playerIdle, opPlayer)
+		// Idle : afficher idles
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Translate(playerX, groundY)
+		screen.DrawImage(b.playerIdle, op)
 
-		// Ennemi idle
-		opEnemy := &ebiten.DrawImageOptions{}
-		opEnemy.GeoM.Scale(scale, scale)
-		opEnemy.GeoM.Translate(
-			float64(3*screenW/4)-float64(ew)*scale/2,
-			groundYEnemy-float64(eh)*scale,
-		)
-		screen.DrawImage(b.enemyIdle, opEnemy)
+		op2 := &ebiten.DrawImageOptions{}
+		op2.GeoM.Scale(scale, scale)
+		op2.GeoM.Translate(enemyX, groundY)
+		screen.DrawImage(b.enemyIdle, op2)
 	}
 
-	// --- Menu attaques en bas à gauche ---
-	attacks := []string{"Punchline", "Flow", "Diss Track"}
-	for i, a := range attacks {
-		text := a
-		if i == b.selectedAttack {
-			text = "> " + a
-		}
-		ebitenutil.DebugPrintAt(screen, text, 10, screenH-80+i*20)
-	}
+	// UI : ego en haut
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Votre égo: %d", b.playerEgo), 10, 10)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Égo adverse: %d", b.enemyEgo), screenW-160, 10)
 
-	// --- Message fin ---
-	if b.over {
-		if b.player.Ego <= 0 {
-			ebitenutil.DebugPrintAt(screen, "Tu vas te prendre une sauce sur les réseaux !", screenW/2-150, screenH/2)
-		} else {
-			ebitenutil.DebugPrintAt(screen, "Tu vas avoir un gros buzz !", screenW/2-150, screenH/2)
+	// Menu attaques (affiché seulement si combat actif et pas de fin)
+	if !b.deadFinished {
+		for i, option := range b.menuOptions {
+			y := screenH - 60 + i*20
+			prefix := "  "
+			if i == b.selectedOption {
+				prefix = "> "
+			}
+			ebitenutil.DebugPrintAt(screen, prefix+option, 10, y)
 		}
 	}
 }
 
+// IsOver : vrai uniquement quand Enter est pressé après la fin
 func (b *Battle) IsOver() bool {
-	return b.over
+	return b.exitRequested
 }
