@@ -40,7 +40,7 @@ func NewMenu() *Menu {
 	}
 
 	m := &Menu{
-		menuOptions: []string{"New Game", "Options", "Quit"},
+		menuOptions: []string{"New game", "Settings", "Quit"},
 		buttonX:     700,
 		buttonY:     400,
 		buttonW:     500,
