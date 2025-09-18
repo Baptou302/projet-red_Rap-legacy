@@ -1,13 +1,17 @@
 package game
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/color"
+	"log"
 	"os"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
+	"github.com/hajimehoshi/ebiten/v2/audio/mp3"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/image/font"
@@ -29,7 +33,8 @@ type Button struct {
 type GameState int
 
 const (
-	StateMenu GameState = iota
+	StateIntro GameState = iota
+	StateMenu
 	StateSettings
 	StateSaveSelect
 	StateCreateSave
@@ -78,8 +83,14 @@ type Game struct {
 	menuButtons  []*Button
 	menuBg       *ebiten.Image
 	settingsBg   *ebiten.Image
+	audioContext *audio.Context
+	bgmPlayer    *audio.Player
 	menuSelected int
 	volume       int
+
+	// Intro
+	introTimer int
+	introText  string
 
 	// Sauvegardes
 	saves         []Save
@@ -136,17 +147,19 @@ func IsKeyJustPressed(key ebiten.Key) bool {
 // -----------------
 func NewGame() *Game {
 	g := &Game{
-		state:  StateMenu,
-		volume: 50,
+		state:      StateIntro, // commence par l'intro
+		volume:     50,
+		introText:  "Bienvenue dans Rap Legacy !",
+		introTimer: 0,
 	}
-	// background menu
-	// si le fichier manque, commente la ligne
+
+	// Background menu
 	g.menuBg = LoadImage("assets/menu_bg.png")
 
-	// background paramètres
+	// Background paramètres
 	g.settingsBg = LoadImage("assets/image3.png")
 
-	// boutons menu principal
+	// Boutons menu principal
 	g.menuButtons = []*Button{
 		{
 			Rect:   image.Rect(685, 490, 1160, 550),
@@ -165,7 +178,7 @@ func NewGame() *Game {
 		},
 	}
 
-	// Charger la police externe (si tu veux la supprimer, commente tout ce bloc)
+	// Charger la police externe
 	ttfBytes, err := os.ReadFile("assets/PressStart2P.ttf")
 	if err == nil {
 		tt, err := opentype.Parse(ttfBytes)
@@ -188,8 +201,28 @@ func NewGame() *Game {
 			}
 		}
 	}
-	// Si la police n'a pas pu être chargée, on laisse nil : text.Draw panique pas (mais tu verras un warning)
-	// (tu as aussi la possibilité d'utiliser basicfont si tu veux)
+
+	// Initialiser l'audio
+	g.audioContext = audio.NewContext(44100) // fréquence 44.1 kHz
+
+	// Charger le MP3
+	mp3Data, err := os.ReadFile("menu/menu.mp3")
+	if err != nil {
+		log.Println("Impossible de charger la musique :", err)
+	} else {
+		d, err := mp3.Decode(g.audioContext, bytes.NewReader(mp3Data))
+		if err != nil {
+			log.Println("Erreur decode mp3 :", err)
+		} else {
+			g.bgmPlayer, err = audio.NewPlayer(g.audioContext, d)
+			if err != nil {
+				log.Println("Erreur création player :", err)
+			} else {
+				g.bgmPlayer.SetVolume(0.5) // volume 0.0 à 1.0
+				g.bgmPlayer.Play()         // lancer la musique
+			}
+		}
+	}
 
 	return g
 }
@@ -198,10 +231,10 @@ func NewGame() *Game {
 // Ebiten methods
 // -----------------
 func (g *Game) Update() error {
-	// MAJ des notifications
 	UpdateNotifications()
-
 	switch g.state {
+	case StateIntro:
+		g.updateIntro()
 	case StateMenu:
 		g.updateMenu()
 	case StateSettings:
@@ -218,6 +251,8 @@ func (g *Game) Update() error {
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	switch g.state {
+	case StateIntro:
+		g.drawIntro(screen)
 	case StateMenu:
 		g.drawMenu(screen)
 	case StateSettings:
@@ -254,7 +289,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			if g.player != nil {
 				playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
 				if playerRect.Overlaps(g.combatZone) && !g.inBattle {
-					// si police chargée, utilise fontSmall ; sinon ebitenutil.DebugPrintAt
 					if g.fontSmall != nil {
 						text.Draw(screen, "Appuie sur E pour lancer un combat !", g.fontSmall, 200, 180, color.White)
 					} else {
@@ -268,18 +302,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				g.Inventaire.DrawNote(screen)
 				g.Inventaire.Draw(screen)
 
-				// Affiche la flèche devant l'item sélectionné (petite, proche du texte)
 				if g.Inventaire.Open && len(g.Inventaire.Items) > 0 {
 					sel := g.Inventaire.selected
-					// paramètres cohérents avec inventaire.go (lineHeight = 120 par ex.)
 					lineHeight := 120
 					screenW, screenH := screen.Size()
 					startY := (screenH - lineHeight*len(g.Inventaire.Items)) / 2
-					// y correspond au baseline / top utilisé pour afficher le texte (dans ton inventaire c'était textY)
 					y := startY + sel*lineHeight + 8
-					// x à gauche du texte centré : rapprocher fortement (-160)
 					textX := screenW/2 - 160
-					// dessiner flèche (taille petite) : si fontBig dispo utilise-la, sinon g.fontSmall
 					fnt := g.fontSmall
 					if fnt == nil && g.fontBig != nil {
 						fnt = g.fontBig
@@ -294,11 +323,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Dessiner les notifications par-dessus tout
+	// Dessiner notifications par-dessus tout
 	if g.fontSmall != nil {
 		DrawNotifications(screen, g.fontSmall)
 	} else {
-		// fallback
 		for i, n := range notifications {
 			ebitenutil.DebugPrintAt(screen, n.Text, 20, 40+i*30)
 		}
@@ -307,6 +335,25 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return 1920, 1080
+}
+
+// -----------------
+// Intro update/draw
+// -----------------
+func (g *Game) updateIntro() {
+	g.introTimer++
+	if g.introTimer > 180 || IsKeyJustPressed(ebiten.KeyEnter) { // 3 secondes
+		g.state = StateMenu
+	}
+}
+
+func (g *Game) drawIntro(screen *ebiten.Image) {
+	screen.Fill(color.Black)
+	if g.fontBig != nil {
+		text.Draw(screen, g.introText, g.fontBig, 600, 400, color.White)
+	} else {
+		ebitenutil.DebugPrintAt(screen, g.introText, 600, 400)
+	}
 }
 
 // -----------------
@@ -354,7 +401,6 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 
 	for i, btn := range g.menuButtons {
 		if i == g.menuSelected {
-			// flèche à gauche du bouton sélectionné (proche)
 			x := btn.Rect.Min.X - 40
 			y := (btn.Rect.Min.Y+btn.Rect.Max.Y)/2 + 10
 			if g.fontSmall != nil {
@@ -363,7 +409,6 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 				ebitenutil.DebugPrintAt(screen, ">", x, y)
 			}
 		}
-		// note : le label est dessiné par ton image/menu_bg ; si tu veux afficher le texte aussi tu peux
 	}
 }
 
@@ -371,7 +416,6 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 // Settings
 // -----------------
 func (g *Game) updateSettings() {
-	// On accepte gauche/droite pour volume (plus naturel)
 	if IsKeyJustPressed(ebiten.KeyRight) || IsKeyJustPressed(ebiten.KeyUp) {
 		g.volume += 5
 		if g.volume > 100 {
@@ -398,12 +442,10 @@ func (g *Game) drawSettings(screen *ebiten.Image) {
 	}
 
 	w, h := screen.Size()
-
 	title := "SETTINGS"
 	vol := fmt.Sprintf("Volume: %d", g.volume)
 	info := "Press ESC to return"
 
-	// centrer les textes (approx)
 	if g.fontBig != nil {
 		text.Draw(screen, title, g.fontBig, w/2-(len(title)*18), h/2-100, color.White)
 		text.Draw(screen, vol, g.fontBig, w/2-(len(vol)*18), h/2, color.White)
@@ -431,6 +473,8 @@ func (g *Game) openSaveSelect() {
 	g.pendingDelete = ""
 	g.state = StateSaveSelect
 }
+
+// ... le reste de ton game.go reste inchangé (updateSaveSelect, drawSaveSelect, updateCreateSave, drawCreateSave, startGameFromSave, updatePlaying)
 
 // Suppression avec confirmation et navigation dans la sélection de sauvegarde
 func (g *Game) updateSaveSelect() {

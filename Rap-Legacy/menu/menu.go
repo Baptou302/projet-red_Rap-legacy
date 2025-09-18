@@ -85,7 +85,8 @@ func (m *Menu) Update() string {
 	if IsKeyJustPressed(ebiten.KeyEnter) {
 		switch m.menuSelected {
 		case 0:
-			return "play"
+			// 🚀 Lancer la cinématique au lieu du "play" direct
+			return "intro"
 		case 1:
 			return "settings"
 		case 2:
@@ -103,7 +104,8 @@ func (m *Menu) Update() string {
 			if x >= bx && x <= bx+bw && y >= by && y <= by+bh {
 				switch i {
 				case 0:
-					return "play"
+					// 🚀 Idem avec la souris
+					return "intro"
 				case 1:
 					return "settings"
 				case 2:
