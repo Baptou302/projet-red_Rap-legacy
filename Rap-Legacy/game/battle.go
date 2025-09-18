@@ -118,14 +118,14 @@ func NewBattle(player *Player, enemy *Enemy) *Battle {
 	b.playerLines = [][]string{
 		{"Yo je te pète la rime !", "C’est chaud comme le freestyle !"},    // Punchline
 		{"Mon flow te fait trembler !", "Tu peux pas suivre mon rythme !"}, // Flow
-		{"Diss track incoming ! Prépare toi !"},                            // Diss Track
+		{"Diss track incoming ! je vais ruiner ta carrière !"},             // Diss Track
 	}
 
 	// Dialogues IA
 	b.enemyLines = [][]string{
 		{"Tu crois pouvoir me punchliner ?", "J'te mets KO avec mes rimes !"}, // Punchline
 		{"Mon flow est supérieur !", "Trop lent pour moi !"},                  // Flow
-		{"Diss Track ! T'as rien vu venir !"},                                 // Diss Track
+		{"Diss Track ! je vais te faire regretter !"},                         // Diss Track
 	}
 
 	// Image de fin

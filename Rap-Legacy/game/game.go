@@ -39,7 +39,47 @@ const (
 	StateSaveSelect
 	StateCreateSave
 	StatePlaying
+	StateMerchantMenu
 )
+
+// -----------------
+// Merchant Items
+// -----------------
+type MerchantItem struct {
+	Name   string
+	Price  int
+	Action func(g *Game)
+}
+
+// Liste des articles vendus par le marchand
+var MerchantItems = []MerchantItem{
+	{
+		Name:  "Cristalline",
+		Price: 5,
+		Action: func(g *Game) {
+			if g.player != nil {
+				switch g.player.Class {
+				case "Lyricistes":
+					g.Inventaire.AddItem("Cristalline - mystérieuse")
+				case "Performeurs":
+					g.Inventaire.AddItem("Cristalline - tonic")
+				case "Hitmakers":
+					g.Inventaire.AddItem("Cristalline - suspicieuse")
+				default:
+					g.Inventaire.AddItem("Cristalline")
+				}
+			}
+		},
+	},
+
+	{
+		Name:  "Followers",
+		Price: 20,
+		Action: func(g *Game) {
+			g.Followers++
+		},
+	},
+}
 
 // -----------------
 // Notification system
@@ -87,6 +127,8 @@ type Game struct {
 	bgmPlayer    *audio.Player
 	menuSelected int
 	volume       int
+	moneyIcon    *ebiten.Image // ✅ icône argent
+	followerIcon *ebiten.Image // ✅ icône followers
 
 	// Intro
 	introTimer int
@@ -101,12 +143,16 @@ type Game struct {
 	pendingDelete string // confirmation suppression
 
 	// Gameplay
-	player       *Player
-	mapData      *Map
-	enemies      []*Enemy
-	inBattle     bool
-	currentEnemy *Enemy
-	battle       *Battle
+	player                *Player
+	mapData               *Map
+	enemies               []*Enemy
+	inBattle              bool
+	currentEnemy          *Enemy
+	battle                *Battle
+	Merchant              *Merchant
+	Money                 int
+	Followers             int
+	SelectedMerchantIndex int
 
 	// Zone de combat
 	combatZone image.Rectangle
@@ -152,6 +198,8 @@ func NewGame() *Game {
 		introText:  "Bienvenue dans Rap Legacy !",
 		introTimer: 0,
 	}
+	g.moneyIcon = LoadImage("assets/money.png")
+	g.followerIcon = LoadImage("assets/followers.png")
 
 	// Background menu
 	g.menuBg = LoadImage("assets/menu_bg.png")
@@ -222,9 +270,39 @@ func NewGame() *Game {
 				g.bgmPlayer.Play()         // lancer la musique
 			}
 		}
+	} // ✅ Ajout du marchand
+	g.Merchant = &Merchant{
+		X:      500,
+		Y:      750,
+		Items:  []string{"Cristaline", "Followers"},
+		Active: true,
+		Sprite: LoadImage("assets/marchand.png"),
+	}
+	g.Followers = 0
+	g.Money = 100 // ton joueur commence avec 100 pièces
+	g.Inventaire = &Inventaire{
+		Items: []string{},
+	}
+	return g
+}
+
+// Marchand représente un vendeur avec quelques items
+type Merchant struct {
+	X, Y   float64
+	Items  []string
+	Active bool
+	Sprite *ebiten.Image
+}
+
+// Affiche le marchand (sprite PNG)
+func (m *Merchant) Draw(screen *ebiten.Image) {
+	if !m.Active || m.Sprite == nil {
+		return
 	}
 
-	return g
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(m.X, m.Y)
+	screen.DrawImage(m.Sprite, op)
 }
 
 // -----------------
@@ -296,6 +374,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 					}
 				}
 			}
+			
 
 			// Inventaire
 			if g.Inventaire != nil {
@@ -335,6 +414,71 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return 1920, 1080
+}
+// -----------------------------
+    // 🛒 Menu du marchand
+    // -----------------------------
+    case StateMerchantMenu:
+        if g.fontSmall != nil {
+            text.Draw(screen, "=== Marchand ===", g.fontSmall, 200, 150, color.White)
+            text.Draw(screen, "1. Cristalline - 5$", g.fontSmall, 200, 200, color.White)
+            text.Draw(screen, "2. Followers  - 20$", g.fontSmall, 200, 250, color.White)
+            text.Draw(screen, "Appuie sur ESC pour quitter", g.fontSmall, 200, 320, color.White)
+        } else {
+            ebitenutil.DebugPrintAt(screen, "=== Marchand ===", 200, 150)
+            ebitenutil.DebugPrintAt(screen, "1. Cristalline - 5$", 200, 200)
+            ebitenutil.DebugPrintAt(screen, "2. Followers  - 20$", 200, 250)
+            ebitenutil.DebugPrintAt(screen, "Appuie sur ESC pour quitter", 200, 320)
+        }
+
+        // Gestion des achats
+        if inpututil.IsKeyJustPressed(ebiten.Key1) {
+            if g.Money >= 5 {
+                g.Money -= 5
+                // utilise l'action définie dans MerchantItems
+                MerchantItems[0].Action(g)
+                AddNotification("Tu as acheté : " + MerchantItems[0].Name)
+            } else {
+                AddNotification("Pas assez d'argent !")
+            }
+        }
+
+        if inpututil.IsKeyJustPressed(ebiten.Key2) {
+            if g.Money >= 20 {
+                g.Money -= 20
+                MerchantItems[1].Action(g)
+                AddNotification("Tu as acheté : " + MerchantItems[1].Name)
+            } else {
+                AddNotification("Pas assez d'argent !")
+            }
+        }
+
+        if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+            g.state = StatePlaying // 👈 on retourne au jeu
+        }
+    }
+
+    // ✅ Affiche l'argent et les followers avec icônes
+    screenW, _ := screen.Size()
+    opMoney := &ebiten.DrawImageOptions{}
+    opFollower := &ebiten.DrawImageOptions{}
+    opMoney.GeoM.Translate(float64(screenW-200), 20)
+    opFollower.GeoM.Translate(float64(screenW-200), 60)
+
+    if g.moneyIcon != nil {
+        screen.DrawImage(g.moneyIcon, opMoney)
+    }
+    if g.followerIcon != nil {
+        screen.DrawImage(g.followerIcon, opFollower)
+    }
+
+    if g.fontSmall != nil {
+        text.Draw(screen, fmt.Sprintf("%d", g.Money), g.fontSmall, screenW-160, 45, color.White)
+        text.Draw(screen, fmt.Sprintf("%d", g.Followers), g.fontSmall, screenW-160, 85, color.White)
+    } else {
+        ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Money), screenW-160, 45)
+        ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Followers), screenW-160, 85)
+    }
 }
 
 // -----------------
