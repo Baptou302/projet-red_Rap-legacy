@@ -56,19 +56,25 @@ type Battle struct {
 	exitRequested bool
 }
 
-// NewBattle (sans paramètres — compatible avec game.go)
-func NewBattle() *Battle {
-	bg := LoadImage("assets/battle_bg.png")
+func NewBattle(player *Player, enemy *Enemy) *Battle {
+	baseEgo := 100
+	egoFinal := baseEgo
+	if player != nil {
+		egoFinal += player.BonusEgo
+		// Important : reset le bonus pour que ça ne reste pas après
+		player.BonusEgo = 0
+	}
 
 	b := &Battle{
-		bg:           bg,
-		playerEgo:    100,
-		enemyEgo:     100,
-		menuOptions:  []string{"Punchline", "Flow", "Diss Track"},
-		animSpeed:    150 * time.Millisecond,
-		animPlaying:  false,
-		currentIndex: 0,
-		deadFinished: false,
+		bg:             LoadImage("assets/battle_bg.png"), // ✅ fond du combat
+		playerEgo:      egoFinal,
+		enemyEgo:       baseEgo,
+		menuOptions:    []string{"Punchline", "Flow", "Diss Track"},
+		animSpeed:      150 * time.Millisecond,
+		animPlaying:    false,
+		currentIndex:   0,
+		deadFinished:   false,
+		selectedOption: 0,
 	}
 
 	// Idle
@@ -102,7 +108,6 @@ func NewBattle() *Battle {
 
 // Update logique
 func (b *Battle) Update() {
-	// Si la mort est déjà finie → on attend Enter pour demander la sortie
 	if b.deadFinished {
 		if ebiten.IsKeyPressed(ebiten.KeyEnter) {
 			b.exitRequested = true
@@ -110,16 +115,12 @@ func (b *Battle) Update() {
 		return
 	}
 
-	// Si on est en train de jouer une animation (attaque ou mort)
 	if b.animPlaying {
 		if time.Since(b.animStart) > b.animSpeed {
 			b.animStart = time.Now()
 			b.currentIndex++
-			// Si on a dépassé la dernière frame
 			if b.currentIndex >= len(b.currentFrames) {
-				// Cas : c'était une animation de mort
 				if b.attacker == "dead_enemy" || b.attacker == "dead_player" {
-					// garder la dernière frame et passer en mode "deadFinished"
 					b.deadFinished = true
 					if len(b.currentFrames) > 0 {
 						b.deadFrame = b.currentFrames[len(b.currentFrames)-1]
@@ -129,10 +130,8 @@ func (b *Battle) Update() {
 					return
 				}
 
-				// Cas : c'était une attaque normale (player ou enemy)
 				if b.attacker == "player" {
 					b.enemyEgo -= 10
-					// si mort -> lancer anim de mort
 					if b.enemyEgo <= 0 {
 						b.LaunchDeath("enemy")
 						return
@@ -145,7 +144,6 @@ func (b *Battle) Update() {
 					}
 				}
 
-				// Fin de l'animation d'attaque : arrêter l'anim et revenir au statut idle
 				b.animPlaying = false
 				b.currentIndex = 0
 			}
@@ -153,7 +151,7 @@ func (b *Battle) Update() {
 		return
 	}
 
-	// Navigation menu (basique)
+	// Navigation menu
 	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
 		b.selectedOption++
 		if b.selectedOption >= len(b.menuOptions) {
@@ -168,7 +166,6 @@ func (b *Battle) Update() {
 		}
 		time.Sleep(150 * time.Millisecond)
 	}
-	// Lancer attaque joueur
 	if ebiten.IsKeyPressed(ebiten.KeyEnter) {
 		b.LaunchAttack("player")
 	}
@@ -195,7 +192,6 @@ func (b *Battle) LaunchDeath(who string) {
 	if who == "player" {
 		b.attacker = "dead_player"
 		b.currentFrames = b.playerDead
-		// deadFrame sera mis à la fin de l'anim par Update()
 	} else {
 		b.attacker = "dead_enemy"
 		b.currentFrames = b.enemyDead
@@ -204,13 +200,11 @@ func (b *Battle) LaunchDeath(who string) {
 
 // Draw
 func (b *Battle) Draw(screen *ebiten.Image) {
-	// Background
 	if b.bg != nil {
 		screen.DrawImage(b.bg, &ebiten.DrawImageOptions{})
 	}
 
 	screenW, screenH := screen.Size()
-
 	scale := 3.0
 	playerX := float64(screenW/2) - 400
 	enemyX := float64(screenW/2) + 150
@@ -334,7 +328,7 @@ func (b *Battle) Draw(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Votre égo: %d", b.playerEgo), 10, 10)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Égo adverse: %d", b.enemyEgo), screenW-125, 10)
 
-	// Menu attaques (affiché seulement si combat actif et pas de fin)
+	// Menu attaques
 	if !b.deadFinished {
 		for i, option := range b.menuOptions {
 			y := screenH - 60 + i*20
@@ -347,7 +341,6 @@ func (b *Battle) Draw(screen *ebiten.Image) {
 	}
 }
 
-// IsOver : vrai uniquement quand Enter est pressé après la fin
 func (b *Battle) IsOver() bool {
 	return b.exitRequested
 }

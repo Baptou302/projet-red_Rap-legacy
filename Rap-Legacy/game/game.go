@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"os"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -34,6 +35,40 @@ const (
 	StateCreateSave
 	StatePlaying
 )
+
+// -----------------
+// Notification system
+// -----------------
+type Notification struct {
+	Text      string
+	ExpiresAt time.Time
+}
+
+var notifications []Notification
+
+func AddNotification(msg string) {
+	notifications = append(notifications, Notification{
+		Text:      msg,
+		ExpiresAt: time.Now().Add(3 * time.Second), // 3 secondes
+	})
+}
+
+func UpdateNotifications() {
+	now := time.Now()
+	active := []Notification{}
+	for _, n := range notifications {
+		if n.ExpiresAt.After(now) {
+			active = append(active, n)
+		}
+	}
+	notifications = active
+}
+
+func DrawNotifications(screen *ebiten.Image, fontFace font.Face) {
+	for i, n := range notifications {
+		text.Draw(screen, n.Text, fontFace, 20, 40+i*30, color.RGBA{255, 255, 0, 255})
+	}
+}
 
 // -----------------
 // Game structure
@@ -105,6 +140,7 @@ func NewGame() *Game {
 		volume: 50,
 	}
 	// background menu
+	// si le fichier manque, commente la ligne
 	g.menuBg = LoadImage("assets/menu_bg.png")
 
 	// background paramètres
@@ -129,33 +165,31 @@ func NewGame() *Game {
 		},
 	}
 
-	// Charger la police
+	// Charger la police externe (si tu veux la supprimer, commente tout ce bloc)
 	ttfBytes, err := os.ReadFile("assets/PressStart2P.ttf")
-	if err != nil {
-		panic("Impossible de charger la police: " + err.Error())
+	if err == nil {
+		tt, err := opentype.Parse(ttfBytes)
+		if err == nil {
+			g.fontSmall, err = opentype.NewFace(tt, &opentype.FaceOptions{
+				Size:    24,
+				DPI:     72,
+				Hinting: font.HintingFull,
+			})
+			if err != nil {
+				g.fontSmall = nil
+			}
+			g.fontBig, err = opentype.NewFace(tt, &opentype.FaceOptions{
+				Size:    36,
+				DPI:     72,
+				Hinting: font.HintingFull,
+			})
+			if err != nil {
+				g.fontBig = nil
+			}
+		}
 	}
-	tt, err := opentype.Parse(ttfBytes)
-	if err != nil {
-		panic("Impossible de parser la police: " + err.Error())
-	}
-
-	g.fontSmall, err = opentype.NewFace(tt, &opentype.FaceOptions{
-		Size:    24,
-		DPI:     72,
-		Hinting: font.HintingFull,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	g.fontBig, err = opentype.NewFace(tt, &opentype.FaceOptions{
-		Size:    36,
-		DPI:     72,
-		Hinting: font.HintingFull,
-	})
-	if err != nil {
-		panic(err)
-	}
+	// Si la police n'a pas pu être chargée, on laisse nil : text.Draw panique pas (mais tu verras un warning)
+	// (tu as aussi la possibilité d'utiliser basicfont si tu veux)
 
 	return g
 }
@@ -164,6 +198,9 @@ func NewGame() *Game {
 // Ebiten methods
 // -----------------
 func (g *Game) Update() error {
+	// MAJ des notifications
+	UpdateNotifications()
+
 	switch g.state {
 	case StateMenu:
 		g.updateMenu()
@@ -217,7 +254,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			if g.player != nil {
 				playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
 				if playerRect.Overlaps(g.combatZone) && !g.inBattle {
-					text.Draw(screen, "Appuie sur E pour lancer un combat !", g.fontSmall, 200, 180, color.White)
+					// si police chargée, utilise fontSmall ; sinon ebitenutil.DebugPrintAt
+					if g.fontSmall != nil {
+						text.Draw(screen, "Appuie sur E pour lancer un combat !", g.fontSmall, 200, 180, color.White)
+					} else {
+						ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 180)
+					}
 				}
 			}
 
@@ -225,7 +267,40 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			if g.Inventaire != nil {
 				g.Inventaire.DrawNote(screen)
 				g.Inventaire.Draw(screen)
+
+				// Affiche la flèche devant l'item sélectionné (petite, proche du texte)
+				if g.Inventaire.Open && len(g.Inventaire.Items) > 0 {
+					sel := g.Inventaire.selected
+					// paramètres cohérents avec inventaire.go (lineHeight = 120 par ex.)
+					lineHeight := 120
+					screenW, screenH := screen.Size()
+					startY := (screenH - lineHeight*len(g.Inventaire.Items)) / 2
+					// y correspond au baseline / top utilisé pour afficher le texte (dans ton inventaire c'était textY)
+					y := startY + sel*lineHeight + 8
+					// x à gauche du texte centré : rapprocher fortement (-160)
+					textX := screenW/2 - 160
+					// dessiner flèche (taille petite) : si fontBig dispo utilise-la, sinon g.fontSmall
+					fnt := g.fontSmall
+					if fnt == nil && g.fontBig != nil {
+						fnt = g.fontBig
+					}
+					if fnt != nil {
+						text.Draw(screen, "▶", fnt, textX-24, y, color.RGBA{255, 255, 0, 255})
+					} else {
+						ebitenutil.DebugPrintAt(screen, ">", textX-24, y-6)
+					}
+				}
 			}
+		}
+	}
+
+	// Dessiner les notifications par-dessus tout
+	if g.fontSmall != nil {
+		DrawNotifications(screen, g.fontSmall)
+	} else {
+		// fallback
+		for i, n := range notifications {
+			ebitenutil.DebugPrintAt(screen, n.Text, 20, 40+i*30)
 		}
 	}
 }
@@ -279,11 +354,16 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 
 	for i, btn := range g.menuButtons {
 		if i == g.menuSelected {
-			// flèche à gauche du bouton sélectionné
-			x := btn.Rect.Min.X - 60
+			// flèche à gauche du bouton sélectionné (proche)
+			x := btn.Rect.Min.X - 40
 			y := (btn.Rect.Min.Y+btn.Rect.Max.Y)/2 + 10
-			text.Draw(screen, "▶", g.fontBig, x, y, color.RGBA{255, 255, 0, 255})
+			if g.fontSmall != nil {
+				text.Draw(screen, "▶", g.fontSmall, x, y, color.RGBA{255, 255, 0, 255})
+			} else {
+				ebitenutil.DebugPrintAt(screen, ">", x, y)
+			}
 		}
+		// note : le label est dessiné par ton image/menu_bg ; si tu veux afficher le texte aussi tu peux
 	}
 }
 
@@ -291,6 +371,7 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 // Settings
 // -----------------
 func (g *Game) updateSettings() {
+	// On accepte gauche/droite pour volume (plus naturel)
 	if IsKeyJustPressed(ebiten.KeyRight) || IsKeyJustPressed(ebiten.KeyUp) {
 		g.volume += 5
 		if g.volume > 100 {
@@ -322,10 +403,19 @@ func (g *Game) drawSettings(screen *ebiten.Image) {
 	vol := fmt.Sprintf("Volume: %d", g.volume)
 	info := "Press ESC to return"
 
-	// centrer les textes
-	text.Draw(screen, title, g.fontBig, w/2-(len(title)*18), h/2-100, color.White)
-	text.Draw(screen, vol, g.fontBig, w/2-(len(vol)*18), h/2, color.White)
-	text.Draw(screen, info, g.fontSmall, w/2-(len(info)*9), h/2+100, color.RGBA{200, 200, 200, 255})
+	// centrer les textes (approx)
+	if g.fontBig != nil {
+		text.Draw(screen, title, g.fontBig, w/2-(len(title)*18), h/2-100, color.White)
+		text.Draw(screen, vol, g.fontBig, w/2-(len(vol)*18), h/2, color.White)
+	} else {
+		ebitenutil.DebugPrintAt(screen, title, w/2-60, h/2-100)
+		ebitenutil.DebugPrintAt(screen, vol, w/2-60, h/2)
+	}
+	if g.fontSmall != nil {
+		text.Draw(screen, info, g.fontSmall, w/2-(len(info)*9), h/2+100, color.RGBA{200, 200, 200, 255})
+	} else {
+		ebitenutil.DebugPrintAt(screen, info, w/2-80, h/2+100)
+	}
 }
 
 // -----------------
@@ -342,25 +432,8 @@ func (g *Game) openSaveSelect() {
 	g.state = StateSaveSelect
 }
 
+// Suppression avec confirmation et navigation dans la sélection de sauvegarde
 func (g *Game) updateSaveSelect() {
-	if g.saves == nil {
-		all, _ := LoadAllSaves()
-		g.saves = all
-	}
-
-	if IsKeyJustPressed(ebiten.KeyUp) {
-		g.saveSelected--
-		if g.saveSelected < 0 {
-			g.saveSelected = len(g.saves)
-		}
-	}
-	if IsKeyJustPressed(ebiten.KeyDown) {
-		g.saveSelected++
-		if g.saveSelected > len(g.saves) {
-			g.saveSelected = 0
-		}
-	}
-
 	// Suppression avec confirmation
 	if g.saveSelected < len(g.saves) {
 		if IsKeyJustPressed(ebiten.KeyDelete) {
@@ -387,6 +460,19 @@ func (g *Game) updateSaveSelect() {
 		g.pendingDelete = ""
 	}
 
+	if IsKeyJustPressed(ebiten.KeyUp) {
+		g.saveSelected--
+		if g.saveSelected < 0 {
+			g.saveSelected = len(g.saves)
+		}
+	}
+	if IsKeyJustPressed(ebiten.KeyDown) {
+		g.saveSelected++
+		if g.saveSelected > len(g.saves) {
+			g.saveSelected = 0
+		}
+	}
+
 	if IsKeyJustPressed(ebiten.KeyEnter) {
 		if g.saveSelected == len(g.saves) {
 			g.newSaveName = ""
@@ -408,7 +494,11 @@ func (g *Game) drawSaveSelect(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{20, 20, 60, 255})
 
 	title := "Sélectionne une sauvegarde :"
-	text.Draw(screen, title, g.fontBig, 600, 200, color.White)
+	if g.fontBig != nil {
+		text.Draw(screen, title, g.fontBig, 600, 200, color.White)
+	} else {
+		ebitenutil.DebugPrintAt(screen, title, 600, 200)
+	}
 
 	for i, s := range g.saves {
 		line := fmt.Sprintf("%s (%s)", s.Name, s.Class)
@@ -419,17 +509,24 @@ func (g *Game) drawSaveSelect(screen *ebiten.Image) {
 				line = "> " + line + "   (Suppr = supprimer)"
 			}
 		}
-		text.Draw(screen, line, g.fontSmall, 600, 260+i*40, color.White)
+		if g.fontSmall != nil {
+			text.Draw(screen, line, g.fontSmall, 600, 260+i*40, color.White)
+		} else {
+			ebitenutil.DebugPrintAt(screen, line, 600, 260+i*20)
+		}
 	}
 
 	newSaveText := "Créer une nouvelle sauvegarde"
 	if g.saveSelected == len(g.saves) {
 		newSaveText = "> " + newSaveText
 	}
-	text.Draw(screen, newSaveText, g.fontSmall, 600, 260+len(g.saves)*40, color.White)
-
-	info := "Appuie sur ESC pour revenir"
-	text.Draw(screen, info, g.fontSmall, 600, 700, color.RGBA{200, 200, 200, 255})
+	if g.fontSmall != nil {
+		text.Draw(screen, newSaveText, g.fontSmall, 600, 260+len(g.saves)*40, color.White)
+		text.Draw(screen, "Appuie sur ESC pour revenir", g.fontSmall, 600, 700, color.RGBA{200, 200, 200, 255})
+	} else {
+		ebitenutil.DebugPrintAt(screen, newSaveText, 600, 260+len(g.saves)*20)
+		ebitenutil.DebugPrintAt(screen, "Appuie sur ESC pour revenir", 600, 700)
+	}
 }
 
 // -----------------
@@ -482,28 +579,55 @@ func (g *Game) drawCreateSave(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{10, 10, 40, 255})
 
 	title := "Création d'une nouvelle sauvegarde"
-	text.Draw(screen, title, g.fontBig, 600, 200, color.White)
+	if g.fontBig != nil {
+		text.Draw(screen, title, g.fontBig, 600, 200, color.White)
+	} else {
+		ebitenutil.DebugPrintAt(screen, title, 600, 200)
+	}
 
 	prompt := "Nom du personnage :"
-	text.Draw(screen, prompt, g.fontSmall, 600, 260, color.White)
+	if g.fontSmall != nil {
+		text.Draw(screen, prompt, g.fontSmall, 600, 260, color.White)
+	} else {
+		ebitenutil.DebugPrintAt(screen, prompt, 600, 260)
+	}
 
 	cursor := "_"
 	if (g.cursorTimer/30)%2 == 0 {
 		cursor = " "
 	}
-	text.Draw(screen, g.newSaveName+cursor, g.fontSmall, 600, 300, color.White)
-
-	text.Draw(screen, "Choisis une classe :", g.fontSmall, 600, 360, color.White)
-	text.Draw(screen, "[1] Lyricistes", g.fontSmall, 600, 400, color.White)
-	text.Draw(screen, "[2] Performeurs", g.fontSmall, 600, 440, color.White)
-	text.Draw(screen, "[3] Hitmakers", g.fontSmall, 600, 480, color.White)
-
-	if g.newSaveClass != "" {
-		text.Draw(screen, "Classe choisie: "+g.newSaveClass, g.fontSmall, 600, 540, color.White)
-		text.Draw(screen, "Appuie sur Entrée pour valider", g.fontSmall, 600, 580, color.White)
+	if g.fontSmall != nil {
+		text.Draw(screen, g.newSaveName+cursor, g.fontSmall, 600, 300, color.White)
+	} else {
+		ebitenutil.DebugPrintAt(screen, g.newSaveName+cursor, 600, 300)
 	}
 
-	text.Draw(screen, "Appuie sur ECHAP pour annuler", g.fontSmall, 600, 640, color.White)
+	if g.fontSmall != nil {
+		text.Draw(screen, "Choisis une classe :", g.fontSmall, 600, 360, color.White)
+		text.Draw(screen, "[1] Lyricistes", g.fontSmall, 600, 400, color.White)
+		text.Draw(screen, "[2] Performeurs", g.fontSmall, 600, 440, color.White)
+		text.Draw(screen, "[3] Hitmakers", g.fontSmall, 600, 480, color.White)
+	} else {
+		ebitenutil.DebugPrintAt(screen, "Choisis une classe :", 600, 360)
+		ebitenutil.DebugPrintAt(screen, "[1] Lyricistes", 600, 400)
+		ebitenutil.DebugPrintAt(screen, "[2] Performeurs", 600, 440)
+		ebitenutil.DebugPrintAt(screen, "[3] Hitmakers", 600, 480)
+	}
+
+	if g.newSaveClass != "" {
+		if g.fontSmall != nil {
+			text.Draw(screen, "Classe choisie: "+g.newSaveClass, g.fontSmall, 600, 540, color.White)
+			text.Draw(screen, "Appuie sur Entrée pour valider", g.fontSmall, 600, 580, color.White)
+		} else {
+			ebitenutil.DebugPrintAt(screen, "Classe choisie: "+g.newSaveClass, 600, 540)
+		}
+	}
+
+	if g.fontSmall != nil {
+		text.Draw(screen, "Appuie sur ECHAP pour annuler", g.fontSmall, 600, 640, color.White)
+	} else {
+		ebitenutil.DebugPrintAt(screen, "Appuie sur ECHAP pour annuler", 600, 640)
+	}
 }
 
 // -----------------
@@ -530,34 +654,83 @@ func (g *Game) startGameFromSave(s Save) {
 // Playing update
 // -----------------
 func (g *Game) updatePlaying() {
-	if g.Inventaire != nil {
-		if IsKeyJustPressed(ebiten.KeyTab) {
-			g.Inventaire.Open = !g.Inventaire.Open
-		}
-		if IsKeyJustPressed(ebiten.KeyEscape) {
-			g.Inventaire.Open = false
-		}
-	}
-
-	if g.inBattle && g.battle != nil {
-		g.battle.Update()
-		if g.battle.IsOver() {
-			g.inBattle = false
-		}
-		return
-	}
-
+	// Player update (sans param — ta Player.Update n'attend pas mapData)
 	if g.player != nil {
 		g.player.Update()
 	}
 
-	if g.player != nil {
-		playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
-		if playerRect.Overlaps(g.combatZone) {
-			if IsKeyJustPressed(ebiten.KeyE) && !g.inBattle {
-				g.inBattle = true
-				g.battle = NewBattle()
+	// Ouvrir/fermer inventaire avec TAB
+	if IsKeyJustPressed(ebiten.KeyTab) && g.Inventaire != nil {
+		g.Inventaire.Open = !g.Inventaire.Open
+	}
+
+	// Si inventaire ouvert → navigation + actions
+	if g.Inventaire != nil && g.Inventaire.Open {
+		// navigation Up/Down
+		if IsKeyJustPressed(ebiten.KeyUp) {
+			g.Inventaire.selected--
+			if g.Inventaire.selected < 0 && len(g.Inventaire.Items) > 0 {
+				g.Inventaire.selected = len(g.Inventaire.Items) - 1
 			}
+		}
+		if IsKeyJustPressed(ebiten.KeyDown) {
+			g.Inventaire.selected++
+			if g.Inventaire.selected >= len(g.Inventaire.Items) && len(g.Inventaire.Items) > 0 {
+				g.Inventaire.selected = 0
+			}
+		}
+
+		// Consommation : Enter
+		if IsKeyJustPressed(ebiten.KeyEnter) && len(g.Inventaire.Items) > 0 {
+			idx := g.Inventaire.selected
+			if idx >= 0 && idx < len(g.Inventaire.Items) {
+				item := g.Inventaire.Items[idx]
+				switch item {
+				case "Cristalline - mystérieuse", "Cristalline - tonic", "Cristalline - suspicieuse":
+					if g.player != nil {
+						// On stocke un bonus pour le prochain combat
+						g.player.BonusEgo += 50
+						AddNotification(fmt.Sprintf("%s consommée : +50 Ego au prochain combat", item))
+					}
+					// supprimer l'item de l'inventaire
+					g.Inventaire.Items = append(g.Inventaire.Items[:idx], g.Inventaire.Items[idx+1:]...)
+					if g.Inventaire.Icons != nil {
+						delete(g.Inventaire.Icons, item)
+					}
+					// ajuster selected
+					if idx >= len(g.Inventaire.Items) {
+						g.Inventaire.selected = len(g.Inventaire.Items) - 1
+					}
+					if g.Inventaire.selected < 0 {
+						g.Inventaire.selected = 0
+					}
+				default:
+					// Pour les autres objets, juste message
+					AddNotification("Tu as choisi : " + item)
+				}
+			}
+		}
+	}
+
+	// Détection entrée zone combat + E pour lancer combat
+	if g.player != nil && g.combatZone.Overlaps(image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)) && !g.inBattle {
+		if IsKeyJustPressed(ebiten.KeyE) {
+			g.inBattle = true
+			if len(g.enemies) > 0 {
+				// On passe BonusEgo à NewBattle via g.player
+				g.battle = NewBattle(g.player, g.enemies[0])
+			}
+		}
+	}
+
+	// Si en bataille → update combat
+	if g.inBattle && g.battle != nil {
+		g.battle.Update()
+		if g.battle.IsOver() {
+			// Reset état après combat
+			g.inBattle = false
+			g.battle = nil
+			g.player.BonusEgo = 0 // le bonus ne s’applique qu’une fois
 		}
 	}
 }

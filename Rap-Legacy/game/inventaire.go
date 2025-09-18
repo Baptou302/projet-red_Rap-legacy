@@ -21,10 +21,10 @@ type Inventaire struct {
 }
 
 // -----------------
-// NewInventaire (ancienne méthode — garde un contenu par défaut)
+// NewInventaire
 // -----------------
 func NewInventaire() *Inventaire {
-	// Liste des objets par défaut (ton ancien mapping)
+	// Liste des objets par défaut
 	objets := map[string]string{
 		"Téléphone":                 "assets/téléphone.png",
 		"RandM - 9000K":             "assets/puff.png",
@@ -49,16 +49,15 @@ func NewInventaire() *Inventaire {
 }
 
 // -----------------
-// NewInventaireFromItems (construit un inventaire à partir d'une slice d'items)
+// NewInventaireFromItems
 // -----------------
 func NewInventaireFromItems(items []string) *Inventaire {
 	icons := map[string]*ebiten.Image{}
 
-	// mapping item -> asset path (si tu as des noms différents adapte ici)
 	paths := map[string]string{
 		"Micro":                     "assets/micro.png",
 		"Cigarette électronique":    "assets/puff.png",
-		"Cigarette Electronique":    "assets/puff.png", // variantes
+		"Cigarette Electronique":    "assets/puff.png",
 		"Cristalline - mystérieuse": "assets/cristalline.png",
 		"Cristalline - tonic":       "assets/cristalline_tonic.png",
 		"Cristalline - suspicieuse": "assets/cristalline_suspicieuse.png",
@@ -70,7 +69,6 @@ func NewInventaireFromItems(items []string) *Inventaire {
 		if path, ok := paths[item]; ok {
 			icons[item] = LoadImage(path)
 		} else {
-			// si pas de path défini, on peut laisser nil (pas d'icône)
 			icons[item] = nil
 		}
 	}
@@ -88,11 +86,10 @@ func NewInventaireFromItems(items []string) *Inventaire {
 // -----------------
 func (inv *Inventaire) AddItem(item string) {
 	inv.Items = append(inv.Items, item)
-	// tente de charger icône si existe un mapping (reuse NewInventaireFromItems mapping)
 	paths := map[string]string{
 		"Micro":                     "assets/micro.png",
 		"Cigarette électronique":    "assets/puff.png",
-		"Cigarette Electronique":    "assets/puff.png", // variantes
+		"Cigarette Electronique":    "assets/puff.png",
 		"Cristalline - mystérieuse": "assets/cristalline.png",
 		"Cristalline - tonic":       "assets/cristalline_tonic.png",
 		"Cristalline - suspicieuse": "assets/cristalline_suspicieuse.png",
@@ -111,8 +108,42 @@ func (inv *Inventaire) AddItem(item string) {
 // -----------------
 // Update
 // -----------------
-func (inv *Inventaire) Update() {
-	// Rien pour l'instant
+func (inv *Inventaire) Update(player *Player) {
+	if !inv.Open {
+		return
+	}
+
+	// Navigation
+	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) && inv.selected > 0 {
+		inv.selected--
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) && inv.selected < len(inv.Items)-1 {
+		inv.selected++
+	}
+
+	// Consommer l'objet sélectionné
+	if ebiten.IsKeyPressed(ebiten.KeyEnter) && len(inv.Items) > 0 {
+		selectedItem := inv.Items[inv.selected]
+
+		if selectedItem == "Cristalline - mystérieuse" ||
+			selectedItem == "Cristalline - tonic" ||
+			selectedItem == "Cristalline - suspicieuse" {
+
+			// Stocke un bonus pour le prochain combat
+			player.BonusEgo = 50
+
+			// Retirer l'objet de l'inventaire
+			inv.Items = append(inv.Items[:inv.selected], inv.Items[inv.selected+1:]...)
+
+			// Réajuster la sélection
+			if inv.selected >= len(inv.Items) {
+				inv.selected = len(inv.Items) - 1
+			}
+
+			// Notification
+			AddNotification("Tu as bu une Cristalline, ton ego est boosté !")
+		}
+	}
 }
 
 // -----------------
@@ -131,11 +162,11 @@ func (inv *Inventaire) Draw(screen *ebiten.Image) {
 	}
 
 	// Paramètres
-	lineHeight := 100 // espacement vertical
+	lineHeight := 80  // espacement vertical
 	iconScale := 0.08 // taille des icônes
 	iconSpacing := 10 // espace entre texte et icône
 
-	// Calculer largeur max du texte pour positionner les icônes
+	// Calculer largeur max du texte
 	maxTextWidth := 0
 	for _, item := range inv.Items {
 		w := text.BoundString(basicfont.Face7x13, item).Dx()
@@ -144,7 +175,7 @@ func (inv *Inventaire) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Calculer largeur max des icônes
+	// Largeur max des icônes
 	maxIconWidth := 0
 	for _, icon := range inv.Icons {
 		if icon == nil {
@@ -158,12 +189,11 @@ func (inv *Inventaire) Draw(screen *ebiten.Image) {
 
 	totalWidth := maxTextWidth + iconSpacing + int(float64(maxIconWidth)*iconScale)
 
-	// Centrer horizontalement et verticalement
+	// Centrage
 	screenWidth, screenHeight := screen.Size()
 	startX := (screenWidth - totalWidth) / 2
 	startY := (screenHeight - lineHeight*len(inv.Items)) / 2
 
-	// Colonne fixe pour les icônes
 	iconColumnX := startX + maxTextWidth + iconSpacing
 
 	for i, item := range inv.Items {
@@ -173,7 +203,15 @@ func (inv *Inventaire) Draw(screen *ebiten.Image) {
 		// Afficher le texte
 		ebitenutil.DebugPrintAt(screen, item, textX, textY)
 
-		// Afficher l'icône à la colonne fixe
+		// Flèche de sélection
+		if i == inv.selected {
+			arrow := "→"
+			arrowX := textX - 20
+			arrowY := textY
+			ebitenutil.DebugPrintAt(screen, arrow, arrowX, arrowY)
+		}
+
+		// Afficher l'icône
 		if icon, ok := inv.Icons[item]; ok && icon != nil {
 			op := &ebiten.DrawImageOptions{}
 			op.GeoM.Scale(iconScale, iconScale)
@@ -188,7 +226,7 @@ func (inv *Inventaire) Draw(screen *ebiten.Image) {
 }
 
 // -----------------
-// DrawNote (toujours affichée en haut à gauche)
+// DrawNote
 // -----------------
 func (inv *Inventaire) DrawNote(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, "Appuie sur [TAB] pour ouvrir la FAUSSE sacoche Gucci", 20, 20)

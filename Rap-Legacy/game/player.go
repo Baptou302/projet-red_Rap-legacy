@@ -7,6 +7,7 @@ type Player struct {
 	Ego      int
 	Flow     int
 	Charisma int
+	BonusEgo int // Bonus d'ego pour le prochain combat
 	sprite   *ebiten.Image
 }
 
