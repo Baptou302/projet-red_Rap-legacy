@@ -11,7 +11,7 @@ type Enemy struct {
 
 func NewEnemy(x, y float64, name string) *Enemy {
 	return &Enemy{
-		X: x, Y: y, Name: name, Ego: 50,
+		X: x, Y: y, Name: name, Ego: 100,
 		sprite: LoadImage("assets/enemy_idle.png"),
 	}
 }

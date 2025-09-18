@@ -3,13 +3,14 @@ package game
 import "github.com/hajimehoshi/ebiten/v2"
 
 type Player struct {
-	X, Y     float64
-	Ego      int
-	Flow     int
-	Charisma int
-	BonusEgo int // Bonus d'ego pour le prochain combat
-	sprite   *ebiten.Image
-	class    string
+	X, Y                  float64
+	Ego                   int
+	Flow                  int
+	Charisma              int
+	BonusEgo              int // Bonus d'ego pour le prochain combat
+	PendingEnemyEgoDebuff int // Malus d'ego appliqué à l'ennemi au prochain combat
+	sprite                *ebiten.Image
+	class                 string
 }
 
 func NewPlayer(x, y float64, class string) *Player {

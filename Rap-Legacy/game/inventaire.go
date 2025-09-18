@@ -129,31 +129,50 @@ func (inv *Inventaire) Update(player *Player) {
 			selectedItem == "Cristalline - tonic" ||
 			selectedItem == "Cristalline - suspicieuse" {
 
-			// Stocke un bonus pour le prochain combat
+			// ✅ Bonus Ego pour le prochain combat
 			player.BonusEgo = 50
 
 			// Retirer l'objet de l'inventaire
 			inv.Items = append(inv.Items[:inv.selected], inv.Items[inv.selected+1:]...)
-
-			// Réajuster la sélection
 			if inv.selected >= len(inv.Items) {
 				inv.selected = len(inv.Items) - 1
 			}
 
-			// Notification
 			AddNotification("Tu as bu une Cristalline, ton ego est boosté !")
+
+		} else if selectedItem == "Micro" {
+			// ✅ Micro → +10 ego au prochain combat
+			player.BonusEgo = 10
+
+			// Retirer l'objet après usage
+			inv.Items = append(inv.Items[:inv.selected], inv.Items[inv.selected+1:]...)
+			if inv.selected >= len(inv.Items) {
+				inv.selected = len(inv.Items) - 1
+			}
+
+			AddNotification("Tu as utilisé le Micro, ton ego sera boosté de +10 au prochain combat !")
+
+		} else if selectedItem == "Cigarette électronique" {
+			// ✅ Cigarette → -15 ego pour l’ennemi au prochain combat
+			player.PendingEnemyEgoDebuff = 15
+
+			// Retirer l'objet après usage
+			inv.Items = append(inv.Items[:inv.selected], inv.Items[inv.selected+1:]...)
+			if inv.selected >= len(inv.Items) {
+				inv.selected = len(inv.Items) - 1
+			}
+
+			AddNotification("Tu as utilisé la Cigarette électronique, l'ennemi commencera avec -15 ego !")
 		}
 	}
 }
 
-// -----------------
-// Draw
-// -----------------
-func (inv *Inventaire) Draw(screen *ebiten.Image) {
+func (inv *Inventaire) Draw(screen *ebiten.Image, g *Game) {
 	if !inv.Open {
 		return
 	}
 
+	// Fond
 	if inv.Bg != nil {
 		opts := &ebiten.DrawImageOptions{}
 		screen.DrawImage(inv.Bg, opts)
@@ -162,14 +181,20 @@ func (inv *Inventaire) Draw(screen *ebiten.Image) {
 	}
 
 	// Paramètres
-	lineHeight := 80  // espacement vertical
+	lineHeight := 100 // espacement vertical entre chaque item
 	iconScale := 0.08 // taille des icônes
-	iconSpacing := 10 // espace entre texte et icône
+	iconSpacing := 20 // espace entre texte et icône
+
+	// Police : on utilise PressStart2P
+	face := g.fontSmall
+	if face == nil {
+		face = basicfont.Face7x13 // fallback si jamais la police ne charge pas
+	}
 
 	// Calculer largeur max du texte
 	maxTextWidth := 0
 	for _, item := range inv.Items {
-		w := text.BoundString(basicfont.Face7x13, item).Dx()
+		w := text.BoundString(face, item).Dx()
 		if w > maxTextWidth {
 			maxTextWidth = w
 		}
@@ -200,24 +225,25 @@ func (inv *Inventaire) Draw(screen *ebiten.Image) {
 		textX := startX
 		textY := startY + i*lineHeight
 
-		// Afficher le texte
-		ebitenutil.DebugPrintAt(screen, item, textX, textY)
+		// --- Texte ---
+		text.Draw(screen, item, face, textX, textY, color.White)
 
-		// Flèche de sélection
+		// --- Flèche de sélection jaune ▶ ---
 		if i == inv.selected {
-			arrow := "→"
-			arrowX := textX - 20
-			arrowY := textY
-			ebitenutil.DebugPrintAt(screen, arrow, arrowX, arrowY)
+			arrow := "▶"
+			arrowX := textX - 40 // un peu plus proche
+			yellow := color.RGBA{255, 255, 0, 255}
+			text.Draw(screen, arrow, face, arrowX, textY, yellow)
 		}
 
-		// Afficher l'icône
+		// --- Icône alignée avec le texte ---
 		if icon, ok := inv.Icons[item]; ok && icon != nil {
 			op := &ebiten.DrawImageOptions{}
 			op.GeoM.Scale(iconScale, iconScale)
 
+			// On centre l’icône sur la ligne de texte
 			_, ih := icon.Size()
-			iconY := float64(textY) + (float64(lineHeight)-float64(ih)*iconScale)/2
+			iconY := float64(textY) - float64(ih)*iconScale/2 + float64(face.Metrics().Ascent.Round())/2
 
 			op.GeoM.Translate(float64(iconColumnX), iconY)
 			screen.DrawImage(icon, op)
