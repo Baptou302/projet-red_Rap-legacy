@@ -456,7 +456,6 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
         if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
             g.state = StatePlaying // 👈 on retourne au jeu
         }
-    }
 
     // ✅ Affiche l'argent et les followers avec icônes
     screenW, _ := screen.Size()
@@ -479,8 +478,6 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
         ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Money), screenW-160, 45)
         ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Followers), screenW-160, 85)
     }
-}
-
 // -----------------
 // Intro update/draw
 // -----------------
