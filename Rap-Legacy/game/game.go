@@ -13,6 +13,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/mp3"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
@@ -58,7 +59,7 @@ var MerchantItems = []MerchantItem{
 		Price: 5,
 		Action: func(g *Game) {
 			if g.player != nil {
-				switch g.player.Class {
+				switch g.player.class {
 				case "Lyricistes":
 					g.Inventaire.AddItem("Cristalline - mystérieuse")
 				case "Performeurs":
@@ -127,9 +128,9 @@ type Game struct {
 	bgmPlayer    *audio.Player
 	menuSelected int
 	volume       int
-	moneyIcon    *ebiten.Image // ✅ icône argent
-	followerIcon *ebiten.Image // ✅ icône followers
-
+	moneyIcon    *ebiten.Image   // ✅ icône argent
+	followerIcon *ebiten.Image   // ✅ icône followers
+	MerchantZone image.Rectangle // Zone interaction marchand
 	// Intro
 	introTimer int
 	introText  string
@@ -278,6 +279,7 @@ func NewGame() *Game {
 		Active: true,
 		Sprite: LoadImage("assets/marchand.png"),
 	}
+	g.MerchantZone = image.Rect(500, 700, 500+128, 750+128)
 	g.Followers = 0
 	g.Money = 100 // ton joueur commence avec 100 pièces
 	g.Inventaire = &Inventaire{
@@ -310,6 +312,17 @@ func (m *Merchant) Draw(screen *ebiten.Image) {
 // -----------------
 func (g *Game) Update() error {
 	UpdateNotifications()
+	// === Mise à jour de la zone du marchand pour coller au sprite ===
+	if g.Merchant != nil && g.Merchant.Sprite != nil {
+		w, h := g.Merchant.Sprite.Size() // largeur et hauteur du PNG du marchand
+		g.MerchantZone = image.Rect(
+			int(g.Merchant.X),
+			int(g.Merchant.Y),
+			int(g.Merchant.X)+w,
+			int(g.Merchant.Y)+h,
+		)
+	}
+
 	switch g.state {
 	case StateIntro:
 		g.updateIntro()
@@ -331,14 +344,19 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	switch g.state {
 	case StateIntro:
 		g.drawIntro(screen)
+
 	case StateMenu:
 		g.drawMenu(screen)
+
 	case StateSettings:
 		g.drawSettings(screen)
+
 	case StateSaveSelect:
 		g.drawSaveSelect(screen)
+
 	case StateCreateSave:
 		g.drawCreateSave(screen)
+
 	case StatePlaying:
 		if g.inBattle && g.battle != nil {
 			g.battle.Draw(screen)
@@ -351,6 +369,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 			for _, e := range g.enemies {
 				e.Draw(screen)
+			}
+			// ✅ Ajout : dessiner le marchand
+			if g.Merchant != nil {
+				g.Merchant.Draw(screen)
 			}
 
 			// Zone combat
@@ -374,7 +396,34 @@ func (g *Game) Draw(screen *ebiten.Image) {
 					}
 				}
 			}
-			
+			// Message marchand
+			if g.player != nil && g.Merchant != nil {
+				playerRect := image.Rect(
+					int(g.player.X),
+					int(g.player.Y),
+					int(g.player.X)+32,
+					int(g.player.Y)+32,
+				)
+				if g.MerchantZone.Overlaps(playerRect) {
+					if g.fontSmall != nil {
+						text.Draw(
+							screen,
+							"Appuie sur E pour parler au marchand",
+							g.fontSmall,
+							int(g.Merchant.X)-40, // position horizontale
+							int(g.Merchant.Y)-20, // position verticale (au-dessus du marchand)
+							color.White,
+						)
+					} else {
+						ebitenutil.DebugPrintAt(
+							screen,
+							"Appuie sur E pour parler au marchand",
+							int(g.Merchant.X)-40,
+							int(g.Merchant.Y)-20,
+						)
+					}
+				}
+			}
 
 			// Inventaire
 			if g.Inventaire != nil {
@@ -400,9 +449,69 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				}
 			}
 		}
+
+	case StateMerchantMenu: // ✅ Menu du marchand
+		if g.fontSmall != nil {
+			text.Draw(screen, "=== Marchand ===", g.fontSmall, 200, 150, color.White)
+			text.Draw(screen, "1. Cristalline - 5$", g.fontSmall, 200, 200, color.White)
+			text.Draw(screen, "2. Followers  - 20$", g.fontSmall, 200, 250, color.White)
+			text.Draw(screen, "Appuie sur ESC pour quitter", g.fontSmall, 200, 320, color.White)
+		} else {
+			ebitenutil.DebugPrintAt(screen, "=== Marchand ===", 200, 150)
+			ebitenutil.DebugPrintAt(screen, "1. Cristalline - 5$", 200, 200)
+			ebitenutil.DebugPrintAt(screen, "2. Followers  - 20$", 200, 250)
+			ebitenutil.DebugPrintAt(screen, "Appuie sur ESC pour quitter", 200, 320)
+		}
+
+		// Gestion des achats
+		if inpututil.IsKeyJustPressed(ebiten.Key1) {
+			if g.Money >= MerchantItems[0].Price {
+				g.Money -= MerchantItems[0].Price
+				MerchantItems[0].Action(g)
+				AddNotification("Tu as acheté : " + MerchantItems[0].Name)
+			} else {
+				AddNotification("Pas assez d'argent !")
+			}
+		}
+
+		if inpututil.IsKeyJustPressed(ebiten.Key2) {
+			if g.Money >= MerchantItems[1].Price {
+				g.Money -= MerchantItems[1].Price
+				MerchantItems[1].Action(g)
+				AddNotification("Tu as acheté : " + MerchantItems[1].Name)
+			} else {
+				AddNotification("Pas assez d'argent !")
+			}
+		}
+
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			g.state = StatePlaying // retourne au jeu
+		}
+
+		// HUD argent / followers
+		screenW, _ := screen.Size()
+		opMoney := &ebiten.DrawImageOptions{}
+		opFollower := &ebiten.DrawImageOptions{}
+		opMoney.GeoM.Translate(float64(screenW-200), 20)
+		opFollower.GeoM.Translate(float64(screenW-200), 60)
+
+		if g.moneyIcon != nil {
+			screen.DrawImage(g.moneyIcon, opMoney)
+		}
+		if g.followerIcon != nil {
+			screen.DrawImage(g.followerIcon, opFollower)
+		}
+
+		if g.fontSmall != nil {
+			text.Draw(screen, fmt.Sprintf("%d", g.Money), g.fontSmall, screenW-160, 45, color.White)
+			text.Draw(screen, fmt.Sprintf("%d", g.Followers), g.fontSmall, screenW-160, 85, color.White)
+		} else {
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Money), screenW-160, 45)
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Followers), screenW-160, 85)
+		}
 	}
 
-	// Dessiner notifications par-dessus tout
+	// Notifications (affichées par-dessus tout)
 	if g.fontSmall != nil {
 		DrawNotifications(screen, g.fontSmall)
 	} else {
@@ -412,72 +521,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 }
 
-func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	return 1920, 1080
-}
-// -----------------------------
-    // 🛒 Menu du marchand
-    // -----------------------------
-    case StateMerchantMenu:
-        if g.fontSmall != nil {
-            text.Draw(screen, "=== Marchand ===", g.fontSmall, 200, 150, color.White)
-            text.Draw(screen, "1. Cristalline - 5$", g.fontSmall, 200, 200, color.White)
-            text.Draw(screen, "2. Followers  - 20$", g.fontSmall, 200, 250, color.White)
-            text.Draw(screen, "Appuie sur ESC pour quitter", g.fontSmall, 200, 320, color.White)
-        } else {
-            ebitenutil.DebugPrintAt(screen, "=== Marchand ===", 200, 150)
-            ebitenutil.DebugPrintAt(screen, "1. Cristalline - 5$", 200, 200)
-            ebitenutil.DebugPrintAt(screen, "2. Followers  - 20$", 200, 250)
-            ebitenutil.DebugPrintAt(screen, "Appuie sur ESC pour quitter", 200, 320)
-        }
-
-        // Gestion des achats
-        if inpututil.IsKeyJustPressed(ebiten.Key1) {
-            if g.Money >= 5 {
-                g.Money -= 5
-                // utilise l'action définie dans MerchantItems
-                MerchantItems[0].Action(g)
-                AddNotification("Tu as acheté : " + MerchantItems[0].Name)
-            } else {
-                AddNotification("Pas assez d'argent !")
-            }
-        }
-
-        if inpututil.IsKeyJustPressed(ebiten.Key2) {
-            if g.Money >= 20 {
-                g.Money -= 20
-                MerchantItems[1].Action(g)
-                AddNotification("Tu as acheté : " + MerchantItems[1].Name)
-            } else {
-                AddNotification("Pas assez d'argent !")
-            }
-        }
-
-        if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-            g.state = StatePlaying // 👈 on retourne au jeu
-        }
-
-    // ✅ Affiche l'argent et les followers avec icônes
-    screenW, _ := screen.Size()
-    opMoney := &ebiten.DrawImageOptions{}
-    opFollower := &ebiten.DrawImageOptions{}
-    opMoney.GeoM.Translate(float64(screenW-200), 20)
-    opFollower.GeoM.Translate(float64(screenW-200), 60)
-
-    if g.moneyIcon != nil {
-        screen.DrawImage(g.moneyIcon, opMoney)
-    }
-    if g.followerIcon != nil {
-        screen.DrawImage(g.followerIcon, opFollower)
-    }
-
-    if g.fontSmall != nil {
-        text.Draw(screen, fmt.Sprintf("%d", g.Money), g.fontSmall, screenW-160, 45, color.White)
-        text.Draw(screen, fmt.Sprintf("%d", g.Followers), g.fontSmall, screenW-160, 85, color.White)
-    } else {
-        ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Money), screenW-160, 45)
-        ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Followers), screenW-160, 85)
-    }
 // -----------------
 // Intro update/draw
 // -----------------
@@ -819,7 +862,7 @@ func (g *Game) drawCreateSave(screen *ebiten.Image) {
 // Start game from save
 // -----------------
 func (g *Game) startGameFromSave(s Save) {
-	g.player = NewPlayer(s.PlayerX, s.PlayerY)
+	g.player = NewPlayer(s.PlayerX, s.PlayerY, s.Class) // 👈 ajoute s.Class
 	g.player.Ego = s.Ego
 	g.player.Flow = s.Flow
 	g.player.Charisma = s.Charisma
@@ -897,6 +940,22 @@ func (g *Game) updatePlaying() {
 		}
 	}
 
+	// Détection entrée zone marchand + E pour ouvrir le menu
+	if g.player != nil {
+		playerRect := image.Rect(
+			int(g.player.X), int(g.player.Y),
+			int(g.player.X)+32, int(g.player.Y)+32, // adapte à la taille du sprite joueur
+		)
+
+		if g.MerchantZone.Overlaps(playerRect) {
+
+			// Si touche E pressée → ouvre le menu du marchand
+			if IsKeyJustPressed(ebiten.KeyE) {
+				g.state = StateMerchantMenu
+			}
+		}
+	}
+
 	// Détection entrée zone combat + E pour lancer combat
 	if g.player != nil && g.combatZone.Overlaps(image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)) && !g.inBattle {
 		if IsKeyJustPressed(ebiten.KeyE) {
@@ -918,4 +977,11 @@ func (g *Game) updatePlaying() {
 			g.player.BonusEgo = 0 // le bonus ne s’applique qu’une fois
 		}
 	}
+}
+
+// -----------------
+// Layout (obligatoire pour Ebiten)
+// -----------------
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return 1920, 1080 // taille interne du rendu
 }
