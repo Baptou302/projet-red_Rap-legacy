@@ -409,9 +409,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
 				if playerRect.Overlaps(g.combatZone) && !g.inBattle {
 					if g.fontSmall != nil {
-						text.Draw(screen, "Appuie sur E pour lancer un combat !", g.fontSmall, 200, 180, color.White)
+						text.Draw(screen, "Appuie sur E pour défier lil patafix !", g.fontSmall, 200, 180, color.White)
 					} else {
-						ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 180)
+						ebitenutil.DebugPrintAt(screen, "Appuie sur E pour défier lil patafix !", 200, 180)
 					}
 				}
 			}
@@ -433,32 +433,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				g.Inventaire.DrawNote(screen)
 				g.Inventaire.Draw(screen, g)
 			}
-		}
-		// ✅ HUD Argent & Followers (uniquement dans la map)
-		screenW, _ := screen.Size()
-
-		opMoney := &ebiten.DrawImageOptions{}
-		opFollower := &ebiten.DrawImageOptions{}
-
-		// On place les icônes en haut à droite
-		opMoney.GeoM.Translate(float64(screenW-200), 20)    // position pour money.png
-		opFollower.GeoM.Translate(float64(screenW-200), 60) // position pour followers.png
-
-		// Dessiner les icônes si elles existent
-		if g.moneyIcon != nil {
-			screen.DrawImage(g.moneyIcon, opMoney)
-		}
-		if g.followerIcon != nil {
-			screen.DrawImage(g.followerIcon, opFollower)
-		}
-
-		// Dessiner les valeurs à côté
-		if g.fontSmall != nil {
-			text.Draw(screen, fmt.Sprintf("%d", g.Money), g.fontSmall, screenW-160, 45, color.White)
-			text.Draw(screen, fmt.Sprintf("%d", g.Followers), g.fontSmall, screenW-160, 85, color.White)
-		} else {
-			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Money), screenW-160, 45)
-			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Followers), screenW-160, 85)
 		}
 
 		// -----------------
@@ -909,11 +883,11 @@ func (g *Game) startGameFromSave(s Save) {
 
 	g.mapData = NewMap()
 	g.enemies = []*Enemy{
-		NewEnemy(200, 200, "Rival Rapper"),
-		NewEnemy(400, 300, "Boss Rapper"),
+		NewEnemy(600, 100, "Rival Rapper"),
+		NewEnemy(65, 650, "Boss Rapper"),
 	}
 	g.inBattle = false
-	g.combatZone = image.Rect(200, 200, 300, 300)
+	g.combatZone = image.Rect(600, 100, 200, 200)
 	g.state = StatePlaying
 }
 

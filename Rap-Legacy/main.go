@@ -9,12 +9,10 @@ import (
 
 func main() {
 	SetGameIcon("assets/icon.png")
-
 	g := game.NewGame()
 	ebiten.SetWindowDecorated(false)
 	ebiten.SetWindowSize(1920, 1080)
 	ebiten.SetWindowTitle("Rap Legacy")
-
 	if err := ebiten.RunGame(g); err != nil {
 		log.Fatal(err)
 	}

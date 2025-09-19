@@ -382,7 +382,7 @@ func (b *Battle) Draw(screen *ebiten.Image) {
 
 	// Ego
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Votre égo: %d", b.playerEgo), 10, 10)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Égo adverse: %d", b.enemyEgo), screenW-125, 10)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("égo de Lil’ Patafix: %d", b.enemyEgo), screenW-155, 10)
 
 	// Dialogue centré
 	if b.currentLine != "" && time.Since(b.lineStart) < b.lineDuration {
