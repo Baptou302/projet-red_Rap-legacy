@@ -56,7 +56,7 @@ type MerchantItem struct {
 var MerchantItems = []MerchantItem{
 	{
 		Name:  "Cristalline",
-		Price: 5,
+		Price: 50,
 		Action: func(g *Game) {
 			if g.player != nil {
 				switch g.player.class {
@@ -75,9 +75,9 @@ var MerchantItems = []MerchantItem{
 
 	{
 		Name:  "Followers",
-		Price: 20,
+		Price: 200,
 		Action: func(g *Game) {
-			g.Followers++
+			g.Followers += 100
 		},
 	},
 }
@@ -111,8 +111,21 @@ func UpdateNotifications() {
 }
 
 func DrawNotifications(screen *ebiten.Image, fontFace font.Face) {
+	screenW, _ := screen.Size() // largeur de l’écran
+
 	for i, n := range notifications {
-		text.Draw(screen, n.Text, fontFace, 20, 40+i*30, color.RGBA{255, 255, 0, 255})
+		// Mesurer la largeur du texte
+		bounds, _ := font.BoundString(fontFace, n.Text)
+		textWidth := (bounds.Max.X - bounds.Min.X).Ceil()
+
+		// Calculer X pour centrer
+		x := (screenW - textWidth) / 2
+
+		// Y : position de départ (40) + espacement (30)
+		y := 40 + i*30
+
+		// Dessiner le texte centré
+		text.Draw(screen, n.Text, fontFace, x, y, color.RGBA{255, 255, 0, 255})
 	}
 }
 
@@ -131,6 +144,7 @@ type Game struct {
 	moneyIcon    *ebiten.Image   // ✅ icône argent
 	followerIcon *ebiten.Image   // ✅ icône followers
 	MerchantZone image.Rectangle // Zone interaction marchand
+
 	// Intro
 	introTimer int
 	introText  string
@@ -154,6 +168,8 @@ type Game struct {
 	Money                 int
 	Followers             int
 	SelectedMerchantIndex int
+	PlayerClass           string
+	Winner                string // "player" ou "enemy"
 
 	// Zone de combat
 	combatZone image.Rectangle
@@ -233,7 +249,7 @@ func NewGame() *Game {
 		tt, err := opentype.Parse(ttfBytes)
 		if err == nil {
 			g.fontSmall, err = opentype.NewFace(tt, &opentype.FaceOptions{
-				Size:    24,
+				Size:    14,
 				DPI:     72,
 				Hinting: font.HintingFull,
 			})
@@ -267,8 +283,9 @@ func NewGame() *Game {
 			if err != nil {
 				log.Println("Erreur création player :", err)
 			} else {
-				g.bgmPlayer.SetVolume(0.5) // volume 0.0 à 1.0
-				g.bgmPlayer.Play()         // lancer la musique
+				// On utilise la valeur du volume du jeu (0–100)
+				g.bgmPlayer.SetVolume(float64(g.volume) / 100.0)
+				g.bgmPlayer.Play() // lancer la musique
 			}
 		}
 	} // ✅ Ajout du marchand
@@ -336,6 +353,8 @@ func (g *Game) Update() error {
 		g.updateCreateSave()
 	case StatePlaying:
 		g.updatePlaying()
+	case StateMerchantMenu:
+		g.updateMerchantMenu() // logique marchant uniquement dans Update
 	}
 	return nil
 }
@@ -361,6 +380,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		if g.inBattle && g.battle != nil {
 			g.battle.Draw(screen)
 		} else {
+			// Dessiner la map / joueur / ennemis / marchand
 			if g.mapData != nil {
 				g.mapData.Draw(screen)
 			}
@@ -370,7 +390,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			for _, e := range g.enemies {
 				e.Draw(screen)
 			}
-			// ✅ Ajout : dessiner le marchand
 			if g.Merchant != nil {
 				g.Merchant.Draw(screen)
 			}
@@ -385,7 +404,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				red,
 			)
 
-			// Message combat
+			// Message "Appuie sur E pour lancer un combat !"
 			if g.player != nil {
 				playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
 				if playerRect.Overlaps(g.combatZone) && !g.inBattle {
@@ -396,31 +415,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 					}
 				}
 			}
-			// Message marchand
+
+			// Message marchand au-dessus du marchand
 			if g.player != nil && g.Merchant != nil {
-				playerRect := image.Rect(
-					int(g.player.X),
-					int(g.player.Y),
-					int(g.player.X)+32,
-					int(g.player.Y)+32,
-				)
+				playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
 				if g.MerchantZone.Overlaps(playerRect) {
 					if g.fontSmall != nil {
-						text.Draw(
-							screen,
-							"Appuie sur E pour parler au marchand",
-							g.fontSmall,
-							int(g.Merchant.X)-40, // position horizontale
-							int(g.Merchant.Y)-20, // position verticale (au-dessus du marchand)
-							color.White,
-						)
+						text.Draw(screen, "Appuie sur E pour parler au marchand", g.fontSmall, int(g.Merchant.X)-40, int(g.Merchant.Y)-20, color.White)
 					} else {
-						ebitenutil.DebugPrintAt(
-							screen,
-							"Appuie sur E pour parler au marchand",
-							int(g.Merchant.X)-40,
-							int(g.Merchant.Y)-20,
-						)
+						ebitenutil.DebugPrintAt(screen, "Appuie sur E pour parler au marchand", int(g.Merchant.X)-40, int(g.Merchant.Y)-20)
 					}
 				}
 			}
@@ -428,25 +431,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			// Inventaire
 			if g.Inventaire != nil {
 				g.Inventaire.DrawNote(screen)
-				g.Inventaire.Draw(screen)
-
-				if g.Inventaire.Open && len(g.Inventaire.Items) > 0 {
-					sel := g.Inventaire.selected
-					lineHeight := 120
-					screenW, screenH := screen.Size()
-					startY := (screenH - lineHeight*len(g.Inventaire.Items)) / 2
-					y := startY + sel*lineHeight + 8
-					textX := screenW/2 - 160
-					fnt := g.fontSmall
-					if fnt == nil && g.fontBig != nil {
-						fnt = g.fontBig
-					}
-					if fnt != nil {
-						text.Draw(screen, "▶", fnt, textX-24, y, color.RGBA{255, 255, 0, 255})
-					} else {
-						ebitenutil.DebugPrintAt(screen, ">", textX-24, y-6)
-					}
-				}
+				g.Inventaire.Draw(screen, g)
 			}
 		}
 		// ✅ HUD Argent & Followers (uniquement dans la map)
@@ -476,50 +461,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Followers), screenW-160, 85)
 		}
 
-	case StateMerchantMenu: // ✅ Menu du marchand
-		if g.fontSmall != nil {
-			text.Draw(screen, "=== Marchand ===", g.fontSmall, 200, 150, color.White)
-			text.Draw(screen, "1. Cristalline - 5$", g.fontSmall, 200, 200, color.White)
-			text.Draw(screen, "2. Followers  - 20$", g.fontSmall, 200, 250, color.White)
-			text.Draw(screen, "Appuie sur ESC pour quitter", g.fontSmall, 200, 320, color.White)
-		} else {
-			ebitenutil.DebugPrintAt(screen, "=== Marchand ===", 200, 150)
-			ebitenutil.DebugPrintAt(screen, "1. Cristalline - 5$", 200, 200)
-			ebitenutil.DebugPrintAt(screen, "2. Followers  - 20$", 200, 250)
-			ebitenutil.DebugPrintAt(screen, "Appuie sur ESC pour quitter", 200, 320)
-		}
+		// -----------------
+		// HUD : argent / followers / classe (en dehors du bloc d'affichage de map)
+		// -----------------
+		hudX := 10
+		hudY := 40
 
-		// Gestion des achats
-		if inpututil.IsKeyJustPressed(ebiten.Key1) {
-			if g.Money >= MerchantItems[0].Price {
-				g.Money -= MerchantItems[0].Price
-				MerchantItems[0].Action(g)
-				AddNotification("Tu as acheté : " + MerchantItems[0].Name)
-			} else {
-				AddNotification("Pas assez d'argent !")
-			}
-		}
-
-		if inpututil.IsKeyJustPressed(ebiten.Key2) {
-			if g.Money >= MerchantItems[1].Price {
-				g.Money -= MerchantItems[1].Price
-				MerchantItems[1].Action(g)
-				AddNotification("Tu as acheté : " + MerchantItems[1].Name)
-			} else {
-				AddNotification("Pas assez d'argent !")
-			}
-		}
-
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-			g.state = StatePlaying // retourne au jeu
-		}
-
-		// HUD argent / followers
-		screenW, _ := screen.Size()
 		opMoney := &ebiten.DrawImageOptions{}
 		opFollower := &ebiten.DrawImageOptions{}
-		opMoney.GeoM.Translate(float64(screenW-200), 20)
-		opFollower.GeoM.Translate(float64(screenW-200), 60)
+		opMoney.GeoM.Translate(float64(hudX), float64(hudY))
+		opFollower.GeoM.Translate(float64(hudX), float64(hudY+40))
 
 		if g.moneyIcon != nil {
 			screen.DrawImage(g.moneyIcon, opMoney)
@@ -529,21 +480,77 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 
 		if g.fontSmall != nil {
-			text.Draw(screen, fmt.Sprintf("%d", g.Money), g.fontSmall, screenW-160, 45, color.White)
-			text.Draw(screen, fmt.Sprintf("%d", g.Followers), g.fontSmall, screenW-160, 85, color.White)
+			text.Draw(screen, fmt.Sprintf("%d", g.Money), g.fontSmall, hudX+40, hudY+25, color.White)
+			text.Draw(screen, fmt.Sprintf("%d", g.Followers), g.fontSmall, hudX+40, hudY+65, color.White)
+			if g.PlayerClass != "" {
+				text.Draw(screen, "Classe: "+g.PlayerClass, g.fontSmall, hudX, hudY+105, color.White)
+			}
 		} else {
-			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Money), screenW-160, 45)
-			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Followers), screenW-160, 85)
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Money), hudX+40, hudY+25)
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", g.Followers), hudX+40, hudY+65)
+			if g.PlayerClass != "" {
+				ebitenutil.DebugPrintAt(screen, "Classe: "+g.PlayerClass, hudX, hudY+105)
+			}
 		}
+
+	case StateMerchantMenu:
+		g.drawMerchantMenu(screen)
 	}
 
-	// Notifications (affichées par-dessus tout)
+	// Notifications (dessinées par-dessus tout)
 	if g.fontSmall != nil {
 		DrawNotifications(screen, g.fontSmall)
 	} else {
 		for i, n := range notifications {
 			ebitenutil.DebugPrintAt(screen, n.Text, 20, 40+i*30)
 		}
+	}
+}
+
+// -----------------
+// Draw Merchant Menu (affichage)
+// -----------------
+func (g *Game) drawMerchantMenu(screen *ebiten.Image) {
+	if g.fontSmall != nil {
+		text.Draw(screen, "=== Marchand ===", g.fontSmall, 200, 150, color.White)
+		text.Draw(screen, "1. Cristalline - 50$", g.fontSmall, 200, 200, color.White)
+		text.Draw(screen, "2. Followers x100 - 200$", g.fontSmall, 200, 250, color.White)
+		text.Draw(screen, "Appuie sur ESC pour quitter", g.fontSmall, 200, 320, color.White)
+	} else {
+		ebitenutil.DebugPrintAt(screen, "=== Marchand ===", 200, 150)
+		ebitenutil.DebugPrintAt(screen, "1. Cristalline - 50$", 200, 200)
+		ebitenutil.DebugPrintAt(screen, "2. Followers x100 - 200$", 200, 250)
+		ebitenutil.DebugPrintAt(screen, "Appuie sur ESC pour quitter", 200, 320)
+	}
+}
+
+// -----------------
+// Update Merchant Menu (logique)
+// -----------------
+func (g *Game) updateMerchantMenu() {
+	// Ici on n'utilise que inpututil.IsKeyJustPressed : unique déclenchement par touche
+	if inpututil.IsKeyJustPressed(ebiten.Key1) {
+		if g.Money >= MerchantItems[0].Price {
+			g.Money -= MerchantItems[0].Price
+			MerchantItems[0].Action(g)
+			AddNotification("Tu as acheté : " + MerchantItems[0].Name)
+		} else {
+			AddNotification("Pas assez d'argent !")
+		}
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.Key2) {
+		if g.Money >= MerchantItems[1].Price {
+			g.Money -= MerchantItems[1].Price
+			MerchantItems[1].Action(g)
+			AddNotification("Tu as acheté : " + MerchantItems[1].Name)
+		} else {
+			AddNotification("Pas assez d'argent !")
+		}
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.state = StatePlaying
 	}
 }
 
@@ -638,6 +645,12 @@ func (g *Game) updateSettings() {
 			g.volume = 0
 		}
 	}
+
+	// ✅ appliquer immédiatement à la musique
+	if g.bgmPlayer != nil {
+		g.bgmPlayer.SetVolume(float64(g.volume) / 100.0)
+	}
+
 	if IsKeyJustPressed(ebiten.KeyEscape) {
 		g.state = StateMenu
 	}
@@ -683,8 +696,6 @@ func (g *Game) openSaveSelect() {
 	g.pendingDelete = ""
 	g.state = StateSaveSelect
 }
-
-// ... le reste de ton game.go reste inchangé (updateSaveSelect, drawSaveSelect, updateCreateSave, drawCreateSave, startGameFromSave, updatePlaying)
 
 // Suppression avec confirmation et navigation dans la sélection de sauvegarde
 func (g *Game) updateSaveSelect() {
@@ -888,11 +899,13 @@ func (g *Game) drawCreateSave(screen *ebiten.Image) {
 // Start game from save
 // -----------------
 func (g *Game) startGameFromSave(s Save) {
-	g.player = NewPlayer(s.PlayerX, s.PlayerY, s.Class) // 👈 ajoute s.Class
+	g.player = NewPlayer(s.PlayerX, s.PlayerY, s.Class) // 👈 le joueur a sa classe
 	g.player.Ego = s.Ego
 	g.player.Flow = s.Flow
 	g.player.Charisma = s.Charisma
 	g.Inventaire = NewInventaireFromItems(s.Inventory)
+
+	g.PlayerClass = s.Class // ✅ très important : on garde aussi la classe dans Game
 
 	g.mapData = NewMap()
 	g.enemies = []*Enemy{
@@ -939,28 +952,44 @@ func (g *Game) updatePlaying() {
 			idx := g.Inventaire.selected
 			if idx >= 0 && idx < len(g.Inventaire.Items) {
 				item := g.Inventaire.Items[idx]
+
 				switch item {
+				// Cristalline
 				case "Cristalline - mystérieuse", "Cristalline - tonic", "Cristalline - suspicieuse":
 					if g.player != nil {
-						// On stocke un bonus pour le prochain combat
 						g.player.BonusEgo += 50
 						AddNotification(fmt.Sprintf("%s consommée : +50 Ego au prochain combat", item))
 					}
-					// supprimer l'item de l'inventaire
-					g.Inventaire.Items = append(g.Inventaire.Items[:idx], g.Inventaire.Items[idx+1:]...)
-					if g.Inventaire.Icons != nil {
-						delete(g.Inventaire.Icons, item)
+
+				// Micro
+				case "Micro":
+					if g.player != nil {
+						g.player.BonusEgo += 10
+						AddNotification("🎤 Micro utilisé : +10 Ego pour le prochain combat")
 					}
-					// ajuster selected
-					if idx >= len(g.Inventaire.Items) {
-						g.Inventaire.selected = len(g.Inventaire.Items) - 1
+
+				// Cigarette électronique
+				case "Cigarette électronique":
+					if g.player != nil {
+						g.player.PendingEnemyEgoDebuff += 15
+						AddNotification("🚬 Cigarette électronique utilisée : l'ennemi perd 15 Ego au prochain combat")
 					}
-					if g.Inventaire.selected < 0 {
-						g.Inventaire.selected = 0
-					}
+
+				// Autres objets
 				default:
-					// Pour les autres objets, juste message
 					AddNotification("Tu as choisi : " + item)
+				}
+
+				// 🔥 Suppression de l’objet consommé (commun à tous les cas)
+				g.Inventaire.Items = append(g.Inventaire.Items[:idx], g.Inventaire.Items[idx+1:]...)
+				if g.Inventaire.Icons != nil {
+					delete(g.Inventaire.Icons, item)
+				}
+				if idx >= len(g.Inventaire.Items) {
+					g.Inventaire.selected = len(g.Inventaire.Items) - 1
+				}
+				if g.Inventaire.selected < 0 {
+					g.Inventaire.selected = 0
 				}
 			}
 		}
@@ -974,7 +1003,6 @@ func (g *Game) updatePlaying() {
 		)
 
 		if g.MerchantZone.Overlaps(playerRect) {
-
 			// Si touche E pressée → ouvre le menu du marchand
 			if IsKeyJustPressed(ebiten.KeyE) {
 				g.state = StateMerchantMenu
@@ -997,6 +1025,15 @@ func (g *Game) updatePlaying() {
 	if g.inBattle && g.battle != nil {
 		g.battle.Update()
 		if g.battle.IsOver() {
+			// 👉 Vérifie si le joueur a gagné
+			if g.battle.Winner == "player" {
+				g.Money += 50
+				g.Followers += 100
+				AddNotification("Victoire ! +50$ et +100 followers ")
+			} else if g.battle.Winner == "enemy" {
+				AddNotification("Défaite... ")
+			}
+
 			// Reset état après combat
 			g.inBattle = false
 			g.battle = nil

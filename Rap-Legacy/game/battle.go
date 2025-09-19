@@ -67,20 +67,33 @@ type Battle struct {
 	deadFrame     *ebiten.Image
 	endMsg        *ebiten.Image
 	exitRequested bool
+
+	// ✅ Nouveau champ pour savoir qui a gagné
+	Winner string // "player" ou "enemy"
 }
 
 func NewBattle(player *Player, enemy *Enemy) *Battle {
-	baseEgo := 100
-	egoFinal := baseEgo
+	// Ego du joueur avec bonus temporaire
+	egoFinal := player.Ego
 	if player != nil {
 		egoFinal += player.BonusEgo
 		player.BonusEgo = 0
 	}
 
+	// Ego de l’ennemi avec éventuel malus
+	enemyEgo := enemy.Ego
+	if player != nil && player.PendingEnemyEgoDebuff > 0 {
+		enemyEgo -= player.PendingEnemyEgoDebuff
+		if enemyEgo < 0 {
+			enemyEgo = 0
+		}
+		player.PendingEnemyEgoDebuff = 0
+	}
+
 	b := &Battle{
 		bg:               LoadImage("assets/battle_bg.png"),
 		playerEgo:        egoFinal,
-		enemyEgo:         baseEgo,
+		enemyEgo:         enemyEgo,
 		menuOptions:      []string{"Punchline", "Flow", "Diss Track"},
 		attackDamages:    []int{10, 5, 30},
 		enemyDamages:     []int{10, 5, 30},
@@ -184,9 +197,11 @@ func (b *Battle) LaunchDeath(who string) {
 	if who == "player" {
 		b.attacker = "dead_player"
 		b.currentFrames = b.playerDead
+		b.Winner = "enemy" // ✅ l'ennemi a gagné
 	} else {
 		b.attacker = "dead_enemy"
 		b.currentFrames = b.enemyDead
+		b.Winner = "player" // ✅ le joueur a gagné
 	}
 }
 
@@ -208,7 +223,7 @@ func (b *Battle) Update() {
 					dmg := b.attackDamages[b.lastPlayerAttack]
 					b.enemyEgo -= dmg
 					if b.enemyEgo <= 0 {
-						b.LaunchDeath("enemy")
+						b.LaunchDeath("enemy") // 👈 Winner défini ici
 						return
 					}
 					b.animPlaying = false
@@ -221,7 +236,7 @@ func (b *Battle) Update() {
 					dmg := b.enemyDamages[idx]
 					b.playerEgo -= dmg
 					if b.playerEgo <= 0 {
-						b.LaunchDeath("player")
+						b.LaunchDeath("player") // 👈 Winner défini ici
 						return
 					}
 					b.animPlaying = false
