@@ -1,76 +1,74 @@
-package game
+package game // Déclare le package "game" pour regrouper les fichiers liés au jeu
 
 import (
-	"image"
-	"time"
+	"image" // Import pour manipuler des rectangles et sous-images
+	"time"  // Import pour gérer le temps (durées, horodatage)
 
-	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2" // Ebiten pour le rendu et les images du jeu
 )
 
+// Animation représente une animation découpée en plusieurs frames
 type Animation struct {
-	frames     []*ebiten.Image
-	frameCount int
-	current    int
-	frameDelay time.Duration
-	lastUpdate time.Time
+	frames     []*ebiten.Image // Liste des images (frames) de l'animation
+	frameCount int             // Nombre total de frames
+	current    int             // Index de la frame courante
+	frameDelay time.Duration   // Délai entre chaque frame
+	lastUpdate time.Time       // Dernier moment où la frame a été changée
 }
 
-// Découpe une spritesheet en frames
+// NewAnimation crée une nouvelle animation à partir d'une spritesheet
 func NewAnimation(sheet *ebiten.Image, rows, cols int, frameDelay time.Duration) *Animation {
-	w, h := sheet.Size()
-	frameW := w / cols
-	frameH := h / rows
+	w, h := sheet.Size() // Récupère la largeur et hauteur totale de la spritesheet
+	frameW := w / cols   // Largeur d'une seule frame
+	frameH := h / rows   // Hauteur d'une seule frame
 
-	var frames []*ebiten.Image
-	for y := 0; y < rows; y++ {
-		for x := 0; x < cols; x++ {
-			sx := x * frameW
-			sy := y * frameH
-			frame := sheet.SubImage(image.Rect(sx, sy, sx+frameW, sy+frameH)).(*ebiten.Image)
-			frames = append(frames, frame)
+	var frames []*ebiten.Image  // Initialise le slice pour stocker toutes les frames
+	for y := 0; y < rows; y++ { // Parcourt les lignes
+		for x := 0; x < cols; x++ { // Parcourt les colonnes
+			sx := x * frameW                                                                  // Coordonnée X du coin supérieur gauche de la frame
+			sy := y * frameH                                                                  // Coordonnée Y du coin supérieur gauche de la frame
+			frame := sheet.SubImage(image.Rect(sx, sy, sx+frameW, sy+frameH)).(*ebiten.Image) // Découpe la frame
+			frames = append(frames, frame)                                                    // Ajoute la frame à la liste
 		}
 	}
 
-	return &Animation{
-		frames:     frames,
-		frameCount: len(frames),
-		current:    0,
-		frameDelay: frameDelay,
-		lastUpdate: time.Now(),
+	return &Animation{ // Retourne l'objet Animation initialisé
+		frames:     frames,      // Toutes les frames découpées
+		frameCount: len(frames), // Nombre total de frames
+		current:    0,           // Commence à la première frame
+		frameDelay: frameDelay,  // Temps entre chaque frame
+		lastUpdate: time.Now(),  // Date/heure de la création
 	}
 }
 
-// Passe à la frame suivante si le délai est écoulé
+// Update passe à la frame suivante si le délai entre frames est écoulé
 func (a *Animation) Update() {
-	if time.Since(a.lastUpdate) >= a.frameDelay {
-		a.current++
-		if a.current >= a.frameCount {
-			a.current = 0
+	if time.Since(a.lastUpdate) >= a.frameDelay { // Vérifie si le délai est dépassé
+		a.current++                    // Passe à la frame suivante
+		if a.current >= a.frameCount { // Si on dépasse le nombre de frames
+			a.current = 0 // Repart de la première frame
 		}
-		a.lastUpdate = time.Now()
+		a.lastUpdate = time.Now() // Met à jour le timestamp du dernier changement
 	}
 }
 
-// Draw affiche la frame courante.
-// x : position horizontale où centrer le sprite (centre X).
-// y : position verticale de référence.
-// scale : facteur d'agrandissement.
-// anchorBottom : si true -> y est la coordonnée du sol (bas), sinon y est le centre vertical.
+// Draw affiche la frame courante sur l'écran
+// x : position horizontale (centre X du sprite)
+// y : position verticale (référence)
+// scale : facteur d'agrandissement
+// anchorBottom : si true, y correspond au bas du sprite, sinon y est le centre vertical
 func (a *Animation) Draw(screen *ebiten.Image, x, y, scale float64, anchorBottom bool) {
-	frame := a.frames[a.current]
-	w, h := frame.Size()
+	frame := a.frames[a.current] // Récupère la frame actuelle
+	w, h := frame.Size()         // Largeur et hauteur de la frame
 
-	op := &ebiten.DrawImageOptions{}
-	// Appliquer le scale d'abord
-	op.GeoM.Scale(scale, scale)
+	op := &ebiten.DrawImageOptions{} // Options de dessin pour Ebiten
+	op.GeoM.Scale(scale, scale)      // Applique le facteur d'échelle
 
-	if anchorBottom {
-		// Centré en X, bas de l'image aligné sur y (le "sol")
-		op.GeoM.Translate(x-float64(w)*scale/2, y-float64(h)*scale)
-	} else {
-		// Centré en X et Y (comportement classique)
-		op.GeoM.Translate(x-float64(w)*scale/2, y-float64(h)*scale/2)
+	if anchorBottom { // Si le y correspond au bas du sprite
+		op.GeoM.Translate(x-float64(w)*scale/2, y-float64(h)*scale) // Centre horizontal et bas aligné
+	} else { // Si y correspond au centre
+		op.GeoM.Translate(x-float64(w)*scale/2, y-float64(h)*scale/2) // Centre horizontal et vertical
 	}
 
-	screen.DrawImage(frame, op)
+	screen.DrawImage(frame, op) // Dessine la frame sur l'écran
 }

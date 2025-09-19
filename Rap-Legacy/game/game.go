@@ -16,6 +16,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/font/opentype"
 )
 
@@ -41,6 +42,7 @@ const (
 	StateCreateSave
 	StatePlaying
 	StateMerchantMenu
+	StateBlacksmithMenu
 )
 
 // -----------------
@@ -140,6 +142,7 @@ type Game struct {
 	background           *ebiten.Image
 	SelectSaveBackground *ebiten.Image
 	merchantBg           *ebiten.Image
+	menuforgeron         *ebiten.Image
 	audioContext         *audio.Context
 	bgmPlayer            *audio.Player
 	menuSelected         int
@@ -147,6 +150,8 @@ type Game struct {
 	moneyIcon            *ebiten.Image   // ✅ icône argent
 	followerIcon         *ebiten.Image   // ✅ icône followers
 	MerchantZone         image.Rectangle // Zone interaction marchand
+	showBlacksmithMenu   bool
+	blacksmithSelected   int
 
 	// Intro
 	introTimer int
@@ -191,7 +196,8 @@ type Game struct {
 func LoadImage(path string) *ebiten.Image {
 	img, _, err := ebitenutil.NewImageFromFile(path)
 	if err != nil {
-		panic(err)
+		log.Println("Erreur chargement image:", path, err)
+		return nil
 	}
 	return img
 }
@@ -232,6 +238,9 @@ func NewGame() *Game {
 
 	// Background paramètres
 	g.settingsBg = LoadImage("assets/image3.png")
+
+	// Background forgeron (menu forgeron)
+	g.menuforgeron = LoadImage("assets/menuforgeron.png")
 
 	// Boutons menu principal
 	g.menuButtons = []*Button{
@@ -371,6 +380,8 @@ func (g *Game) Update() error {
 		g.updatePlaying()
 	case StateMerchantMenu:
 		g.updateMerchantMenu() // logique marchant uniquement dans Update
+	case StateBlacksmithMenu:
+		g.updateBlacksmithMenu()
 	}
 	return nil
 }
@@ -409,15 +420,18 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			if g.Merchant != nil {
 				g.Merchant.Draw(screen)
 			}
-
+			if g.showBlacksmithMenu {
+				g.drawBlacksmithMenu(screen)
+				return // on évite de redessiner la map par-dessus
+			}
 			// Message "Appuie sur E pour lancer un combat !"
 			if g.player != nil {
 				playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
 				if playerRect.Overlaps(g.combatZone) && !g.inBattle {
 					if g.fontSmall != nil {
-						text.Draw(screen, "Appuie sur E pour défier lil patafix!", g.fontSmall, 200, 180, color.White)
+						text.Draw(screen, "Appuie sur E pour lancer un combat !", g.fontSmall, 200, 180, color.White)
 					} else {
-						ebitenutil.DebugPrintAt(screen, "Appuie sur E pour défier lil patafix !", 200, 180)
+						ebitenutil.DebugPrintAt(screen, "Appuie sur E pour lancer un combat !", 200, 180)
 					}
 				}
 			}
@@ -445,7 +459,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		// HUD : argent / followers / classe (en dehors du bloc d'affichage de map)
 		// -----------------
 		hudX := 10
-		hudY := 40
+		hudY := 60
 
 		opMoney := &ebiten.DrawImageOptions{}
 		opFollower := &ebiten.DrawImageOptions{}
@@ -475,6 +489,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	case StateMerchantMenu:
 		g.drawMerchantMenu(screen)
+	case StateBlacksmithMenu:
+		g.drawBlacksmithMenu(screen)
 	}
 
 	// Notifications (dessinées par-dessus tout)
@@ -541,6 +557,120 @@ func (g *Game) updateMerchantMenu() {
 		}
 	}
 
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.state = StatePlaying
+	}
+}
+
+// -----------------
+// Blacksmith Menu (draw + update)
+// -----------------
+func (g *Game) drawBlacksmithMenu(screen *ebiten.Image) {
+	if g.menuforgeron != nil {
+		op := &ebiten.DrawImageOptions{}
+		screen.DrawImage(g.menuforgeron, op)
+	} else {
+		screen.Fill(color.RGBA{40, 40, 40, 255})
+	}
+
+	face := g.fontSmall
+	if face == nil {
+		face = basicfont.Face7x13
+	}
+
+	options := []string{
+		"",
+		"Fusionner Cristalline + Téléphone -> Cristalline - big",
+	}
+
+	startX := 200
+	startY := 260
+	lineHeight := 80
+
+	for i, opt := range options {
+		y := startY + i*lineHeight
+		var col color.Color = color.White
+		if i == g.blacksmithSelected {
+			col = color.RGBA{255, 215, 0, 255} // gold selection
+		}
+		text.Draw(screen, opt, face, startX, y, col)
+	}
+
+	// aide / info en bas
+	if g.fontSmall != nil {
+		text.Draw(screen, "Appuie sur Entrée pour confirmer, ESC pour quitter", g.fontSmall, 200, startY+len(options)*lineHeight+20, color.RGBA{200, 200, 200, 255})
+	}
+}
+
+func (g *Game) updateBlacksmithMenu() {
+	inv := g.Inventaire
+	if inv == nil {
+		g.state = StatePlaying
+		return
+	}
+
+	// Navigation (0 = amélioration, 1 = fusion)
+	if inpututil.IsKeyJustPressed(ebiten.KeyUp) && g.blacksmithSelected > 0 {
+		g.blacksmithSelected--
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyDown) && g.blacksmithSelected < 1 {
+		g.blacksmithSelected++
+	}
+
+	// Valider choix
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		switch g.blacksmithSelected {
+		case 0:
+			// ----------------------
+			// Améliorer une Cristalline simple
+			// ----------------------
+			if inv.HasCristalline() && inv.RemoveCristalline() {
+				// transforme selon la classe du joueur
+				switch g.PlayerClass {
+				case "Lyricistes":
+					inv.AddItem("Cristalline - mystérieuse")
+				case "Performeurs":
+					inv.AddItem("Cristalline - tonic")
+				case "Hitmakers":
+					inv.AddItem("Cristalline - suspicieuse")
+				default:
+					inv.AddItem("Cristalline - mystérieuse")
+				}
+				AddNotification("🔨 Le forgeron a transformé ta Cristalline en version spéciale !")
+			} else {
+				AddNotification("❌ Il te faut une Cristalline simple pour améliorer.")
+			}
+
+		case 1:
+			// ----------------------
+			// Fusion Cristalline (spéciale ou simple) + Téléphone => BIG Cristalline
+			// ----------------------
+			if inv.HasCristalline() && inv.HasItem("Téléphone") {
+				// retire une cristalline (simple ou spéciale)
+				okCrist := inv.RemoveCristalline() ||
+					inv.RemoveItem("Cristalline - mystérieuse") ||
+					inv.RemoveItem("Cristalline - tonic") ||
+					inv.RemoveItem("Cristalline - suspicieuse")
+
+				// retire un téléphone
+				okTel := inv.RemoveItem("Téléphone")
+
+				if okCrist && okTel {
+					inv.AddItem("Cristalline - big")
+					AddNotification("💥 Fusion réussie ! Tu as créé une BIG Cristalline (+100 ego) !")
+				} else {
+					AddNotification("❌ Fusion échouée (objet manquant).")
+				}
+			} else {
+				AddNotification("❌ Il te faut une Cristalline et un Téléphone pour fusionner.")
+			}
+		}
+
+		// revenir au jeu après action
+		g.state = StatePlaying
+	}
+
+	// Quitter avec ESC
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		g.state = StatePlaying
 	}
@@ -924,11 +1054,9 @@ func (g *Game) startGameFromSave(s Save) {
 
 	// Création des ennemis
 	enemyTop := NewEnemy(600, 100, "Rival Rapper")
-	enemyBoss := NewEnemy(65, 650, "Boss Rapper")
 
 	g.enemies = []*Enemy{
 		enemyTop,
-		enemyBoss,
 	}
 
 	g.inBattle = false
@@ -957,6 +1085,12 @@ func (g *Game) updatePlaying() {
 	// Ouvrir/fermer inventaire avec TAB
 	if IsKeyJustPressed(ebiten.KeyTab) && g.Inventaire != nil {
 		g.Inventaire.Open = !g.Inventaire.Open
+	}
+	// 👉 Ici, on ouvre le menu du forgeron avec F
+	if IsKeyJustPressed(ebiten.KeyF) {
+		g.state = StateBlacksmithMenu
+		g.blacksmithSelected = 0
+		return
 	}
 
 	// Si inventaire ouvert → navigation + actions
@@ -993,14 +1127,20 @@ func (g *Game) updatePlaying() {
 				case "Micro":
 					if g.player != nil {
 						g.player.BonusEgo += 10
-						AddNotification("🎤 Micro utilisé : +10 Ego pour le prochain combat")
+						AddNotification(" Micro utilisé : +10 Ego pour le prochain combat")
 					}
 
 				// Cigarette électronique
 				case "Cigarette électronique":
 					if g.player != nil {
 						g.player.PendingEnemyEgoDebuff += 15
-						AddNotification("🚬 Cigarette électronique utilisée : l'ennemi perd 15 Ego au prochain combat")
+						AddNotification(" Cigarette électronique utilisée : l'ennemi perd 15 Ego au prochain combat")
+					}
+					// Micro
+				case "Cristalline - big":
+					if g.player != nil {
+						g.player.BonusEgo += 100
+						AddNotification(" Cristalline - big utilisé : +100 Ego pour le prochain combat")
 					}
 
 				// Autres objets

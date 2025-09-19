@@ -29,6 +29,7 @@ func NewInventaire() *Inventaire {
 		"Téléphone":                 "assets/téléphone.png",
 		"RandM - 9000K":             "assets/puff.png",
 		"Cristalline - mystérieuse": "assets/cristalline.png",
+		"Cristalline - big":         "assets/cristalline_big.png",
 	}
 
 	items := []string{}
@@ -61,6 +62,7 @@ func NewInventaireFromItems(items []string) *Inventaire {
 		"Cristalline - mystérieuse": "assets/cristalline.png",
 		"Cristalline - tonic":       "assets/cristalline_tonic.png",
 		"Cristalline - suspicieuse": "assets/cristalline_suspicieuse.png",
+		"Cristalline - big":         "assets/cristalline_big.png",
 		"Téléphone":                 "assets/téléphone.png",
 		"RandM - 9000K":             "assets/puff.png",
 	}
@@ -93,6 +95,7 @@ func (inv *Inventaire) AddItem(item string) {
 		"Cristalline - mystérieuse": "assets/cristalline.png",
 		"Cristalline - tonic":       "assets/cristalline_tonic.png",
 		"Cristalline - suspicieuse": "assets/cristalline_suspicieuse.png",
+		"Cristalline - big":         "assets/cristalline_big.png",
 		"Téléphone":                 "assets/téléphone.png",
 		"RandM - 9000K":             "assets/puff.png",
 	}
@@ -129,40 +132,40 @@ func (inv *Inventaire) Update(player *Player) {
 			selectedItem == "Cristalline - tonic" ||
 			selectedItem == "Cristalline - suspicieuse" {
 
-			// ✅ Bonus Ego pour le prochain combat
+			// ✅ Cristallines normales → +50 ego
 			player.BonusEgo = 50
-
-			// Retirer l'objet de l'inventaire
-			inv.Items = append(inv.Items[:inv.selected], inv.Items[inv.selected+1:]...)
-			if inv.selected >= len(inv.Items) {
-				inv.selected = len(inv.Items) - 1
-			}
-
 			AddNotification("Tu as bu une Cristalline, ton ego est boosté !")
 
-		} else if selectedItem == "Micro" {
-			// ✅ Micro → +10 ego au prochain combat
-			player.BonusEgo = 10
-
-			// Retirer l'objet après usage
+			// Retirer après usage
 			inv.Items = append(inv.Items[:inv.selected], inv.Items[inv.selected+1:]...)
-			if inv.selected >= len(inv.Items) {
-				inv.selected = len(inv.Items) - 1
-			}
 
+		} else if selectedItem == "Cristalline - big" {
+			// ✅ BIG Cristalline → +100 ego
+			player.BonusEgo = 100
+			AddNotification("Tu as bu une BIG Cristalline ! Ton ego sera boosté de +100 au prochain combat.")
+
+			// Retirer après usage
+			inv.Items = append(inv.Items[:inv.selected], inv.Items[inv.selected+1:]...)
+
+		} else if selectedItem == "Micro" {
+			// ✅ Micro → +10 ego
+			player.BonusEgo = 10
 			AddNotification("Tu as utilisé le Micro, ton ego sera boosté de +10 au prochain combat !")
 
-		} else if selectedItem == "Cigarette électronique" {
-			// ✅ Cigarette → -15 ego pour l’ennemi au prochain combat
-			player.PendingEnemyEgoDebuff = 15
-
-			// Retirer l'objet après usage
 			inv.Items = append(inv.Items[:inv.selected], inv.Items[inv.selected+1:]...)
-			if inv.selected >= len(inv.Items) {
-				inv.selected = len(inv.Items) - 1
-			}
 
+		} else if selectedItem == "Cigarette électronique" {
+			// ✅ Cigarette → -15 ego ennemi
+			player.PendingEnemyEgoDebuff = 15
 			AddNotification("Tu as utilisé la Cigarette électronique, l'ennemi commencera avec -15 ego !")
+
+			inv.Items = append(inv.Items[:inv.selected], inv.Items[inv.selected+1:]...)
+
+		}
+
+		// ✅ Ajuster la sélection après suppression
+		if inv.selected >= len(inv.Items) {
+			inv.selected = len(inv.Items) - 1
 		}
 	}
 }
@@ -256,4 +259,78 @@ func (inv *Inventaire) Draw(screen *ebiten.Image, g *Game) {
 // -----------------
 func (inv *Inventaire) DrawNote(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, "Appuie sur [TAB] pour ouvrir la FAUSSE sacoche Gucci", 20, 20)
+	ebitenutil.DebugPrintAt(screen, "Appuie sur [F] pour ouvrir craft", 20, 40)
+}
+
+// -----------------
+// Fonctions utilitaires pour l'inventaire
+// -----------------
+
+// Vérifie si l'inventaire contient au moins une Cristalline (peu importe laquelle)
+func (inv *Inventaire) HasCristalline() bool {
+	for _, item := range inv.Items {
+		if item == "Cristalline - mystérieuse" ||
+			item == "Cristalline - tonic" ||
+			item == "Cristalline - suspicieuse" ||
+			item == "Cristalline - big" {
+			return true
+		}
+	}
+	return false
+}
+
+// Vérifie si l'inventaire contient un objet précis
+func (inv *Inventaire) HasItem(name string) bool {
+	for _, item := range inv.Items {
+		if item == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Retire la première Cristalline simple trouvée (mystérieuse / tonic / suspicieuse)
+// Retourne true si une cristalline a été supprimée, false sinon.
+func (inv *Inventaire) RemoveCristalline() bool {
+	for i, item := range inv.Items {
+		if item == "Cristalline - mystérieuse" ||
+			item == "Cristalline - tonic" ||
+			item == "Cristalline - suspicieuse" {
+			// supprimer l'icône si présente
+			if inv.Icons != nil {
+				delete(inv.Icons, item)
+			}
+			// retirer de la slice
+			inv.Items = append(inv.Items[:i], inv.Items[i+1:]...)
+			// ajuster sélection
+			if inv.selected >= len(inv.Items) {
+				inv.selected = len(inv.Items) - 1
+				if inv.selected < 0 {
+					inv.selected = 0
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// Retire un objet précis (par nom). Retourne true si supprimé, false sinon.
+func (inv *Inventaire) RemoveItem(name string) bool {
+	for i, item := range inv.Items {
+		if item == name {
+			if inv.Icons != nil {
+				delete(inv.Icons, item)
+			}
+			inv.Items = append(inv.Items[:i], inv.Items[i+1:]...)
+			if inv.selected >= len(inv.Items) {
+				inv.selected = len(inv.Items) - 1
+				if inv.selected < 0 {
+					inv.selected = 0
+				}
+			}
+			return true
+		}
+	}
+	return false
 }
