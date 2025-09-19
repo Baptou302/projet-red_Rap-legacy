@@ -1042,7 +1042,7 @@ func (g *Game) drawCreateSave(screen *ebiten.Image) {
 // Start game from save
 // -----------------
 func (g *Game) startGameFromSave(s Save) {
-	g.player = NewPlayer(s.PlayerX, s.PlayerY, s.Class)
+	g.player = NewPlayer(375, 470, s.Class) // Set initial X, Y as needed
 	g.player.Ego = s.Ego
 	g.player.Flow = s.Flow
 	g.player.Charisma = s.Charisma
