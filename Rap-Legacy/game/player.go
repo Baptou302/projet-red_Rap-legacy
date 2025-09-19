@@ -9,12 +9,14 @@ type Player struct {
 	Charisma int
 	BonusEgo int // Bonus d'ego pour le prochain combat
 	sprite   *ebiten.Image
+	class    string
 }
 
-func NewPlayer(x, y float64) *Player {
+func NewPlayer(x, y float64, class string) *Player {
 	return &Player{
 		X: x, Y: y,
 		Ego: 100, Flow: 10, Charisma: 5,
+		class:  class, // 👈 Sauvegarde la classe
 		sprite: LoadImage("assets/player_idle.png"),
 	}
 }
