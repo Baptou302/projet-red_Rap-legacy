@@ -133,17 +133,20 @@ func DrawNotifications(screen *ebiten.Image, fontFace font.Face) {
 // Game structure
 // -----------------
 type Game struct {
-	state        GameState
-	menuButtons  []*Button
-	menuBg       *ebiten.Image
-	settingsBg   *ebiten.Image
-	audioContext *audio.Context
-	bgmPlayer    *audio.Player
-	menuSelected int
-	volume       int
-	moneyIcon    *ebiten.Image   // ✅ icône argent
-	followerIcon *ebiten.Image   // ✅ icône followers
-	MerchantZone image.Rectangle // Zone interaction marchand
+	state                GameState
+	menuButtons          []*Button
+	menuBg               *ebiten.Image
+	settingsBg           *ebiten.Image
+	background           *ebiten.Image
+	SelectSaveBackground *ebiten.Image
+	merchantBg           *ebiten.Image
+	audioContext         *audio.Context
+	bgmPlayer            *audio.Player
+	menuSelected         int
+	volume               int
+	moneyIcon            *ebiten.Image   // ✅ icône argent
+	followerIcon         *ebiten.Image   // ✅ icône followers
+	MerchantZone         image.Rectangle // Zone interaction marchand
 
 	// Intro
 	introTimer int
@@ -220,6 +223,12 @@ func NewGame() *Game {
 
 	// Background menu
 	g.menuBg = LoadImage("assets/menu_bg.png")
+
+	// Background sélection sauvegarde
+	g.SelectSaveBackground = LoadImage("assets/SelectSaveBackground.png")
+
+	// Background marchand
+	g.merchantBg = LoadImage("assets/merchant_bg.png")
 
 	// Background paramètres
 	g.settingsBg = LoadImage("assets/image3.png")
@@ -302,6 +311,13 @@ func NewGame() *Game {
 	g.Inventaire = &Inventaire{
 		Items: []string{},
 	}
+	// Charger le background
+	img, _, err := ebitenutil.NewImageFromFile("assets/background.png")
+	if err != nil {
+		log.Fatal(err)
+	}
+	g.background = img
+
 	return g
 }
 
@@ -394,16 +410,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				g.Merchant.Draw(screen)
 			}
 
-			// Zone combat
-			red := color.RGBA{255, 0, 0, 100}
-			ebitenutil.DrawRect(screen,
-				float64(g.combatZone.Min.X),
-				float64(g.combatZone.Min.Y),
-				float64(g.combatZone.Dx()),
-				float64(g.combatZone.Dy()),
-				red,
-			)
-
 			// Message "Appuie sur E pour lancer un combat !"
 			if g.player != nil {
 				playerRect := image.Rect(int(g.player.X), int(g.player.Y), int(g.player.X)+32, int(g.player.Y)+32)
@@ -485,16 +491,28 @@ func (g *Game) Draw(screen *ebiten.Image) {
 // Draw Merchant Menu (affichage)
 // -----------------
 func (g *Game) drawMerchantMenu(screen *ebiten.Image) {
-	if g.fontSmall != nil {
-		text.Draw(screen, "=== Marchand ===", g.fontSmall, 200, 150, color.White)
-		text.Draw(screen, "1. Cristalline - 50$", g.fontSmall, 200, 200, color.White)
-		text.Draw(screen, "2. Followers x100 - 200$", g.fontSmall, 200, 250, color.White)
-		text.Draw(screen, "Appuie sur ESC pour quitter", g.fontSmall, 200, 320, color.White)
+	// --- Fond marchand ---
+	if g.merchantBg != nil {
+		op := &ebiten.DrawImageOptions{}
+		screen.DrawImage(g.merchantBg, op)
 	} else {
-		ebitenutil.DebugPrintAt(screen, "=== Marchand ===", 200, 150)
-		ebitenutil.DebugPrintAt(screen, "1. Cristalline - 50$", 200, 200)
-		ebitenutil.DebugPrintAt(screen, "2. Followers x100 - 200$", 200, 250)
-		ebitenutil.DebugPrintAt(screen, "Appuie sur ESC pour quitter", 200, 320)
+		screen.Fill(color.RGBA{50, 30, 20, 255})
+	}
+
+	// --- Texte à l'intérieur du panneau ---
+	startX := 420 // un peu plus à gauche
+	startY := 400 // plus bas
+
+	if g.fontSmall != nil {
+		text.Draw(screen, "=== Marchand ===", g.fontSmall, startX, startY, color.White)
+		text.Draw(screen, "1. Cristalline - 50$", g.fontSmall, startX, startY+50, color.White)
+		text.Draw(screen, "2. Followers x100 - 200$", g.fontSmall, startX, startY+100, color.White)
+		text.Draw(screen, "Appuie sur ESC pour quitter", g.fontSmall, startX, startY+180, color.White)
+	} else {
+		ebitenutil.DebugPrintAt(screen, "=== Marchand ===", startX, startY)
+		ebitenutil.DebugPrintAt(screen, "1. Cristalline - 50$", startX, startY+50)
+		ebitenutil.DebugPrintAt(screen, "2. Followers x100 - 200$", startX, startY+100)
+		ebitenutil.DebugPrintAt(screen, "Appuie sur ESC pour quitter", startX, startY+180)
 	}
 }
 
@@ -730,8 +748,16 @@ func (g *Game) updateSaveSelect() {
 }
 
 func (g *Game) drawSaveSelect(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{20, 20, 60, 255})
+	// --- Fond avec image ---
+	if g.SelectSaveBackground != nil { // 👉 variable à charger au démarrage du jeu
+		op := &ebiten.DrawImageOptions{}
+		screen.DrawImage(g.SelectSaveBackground, op)
+	} else {
+		// fallback couleur si l'image n'est pas dispo
+		screen.Fill(color.RGBA{20, 20, 60, 255})
+	}
 
+	// --- Titre ---
 	title := "Sélectionne une sauvegarde :"
 	if g.fontBig != nil {
 		text.Draw(screen, title, g.fontBig, 600, 200, color.White)
@@ -815,8 +841,16 @@ func (g *Game) updateCreateSave() {
 }
 
 func (g *Game) drawCreateSave(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{10, 10, 40, 255})
+	// --- Fond avec image ---
+	if g.background != nil {
+		op := &ebiten.DrawImageOptions{}
+		screen.DrawImage(g.background, op)
+	} else {
+		// fallback si l'image n'est pas dispo
+		screen.Fill(color.RGBA{10, 10, 40, 255})
+	}
 
+	// --- Titre ---
 	title := "Création d'une nouvelle sauvegarde"
 	if g.fontBig != nil {
 		text.Draw(screen, title, g.fontBig, 600, 200, color.White)
@@ -824,6 +858,7 @@ func (g *Game) drawCreateSave(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, title, 600, 200)
 	}
 
+	// --- Nom du personnage ---
 	prompt := "Nom du personnage :"
 	if g.fontSmall != nil {
 		text.Draw(screen, prompt, g.fontSmall, 600, 260, color.White)
@@ -831,6 +866,7 @@ func (g *Game) drawCreateSave(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, prompt, 600, 260)
 	}
 
+	// Curseur clignotant
 	cursor := "_"
 	if (g.cursorTimer/30)%2 == 0 {
 		cursor = " "
@@ -841,6 +877,7 @@ func (g *Game) drawCreateSave(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, g.newSaveName+cursor, 600, 300)
 	}
 
+	// --- Choix de la classe ---
 	if g.fontSmall != nil {
 		text.Draw(screen, "Choisis une classe :", g.fontSmall, 600, 360, color.White)
 		text.Draw(screen, "[1] Lyricistes", g.fontSmall, 600, 400, color.White)
@@ -853,6 +890,7 @@ func (g *Game) drawCreateSave(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, "[3] Hitmakers", 600, 480)
 	}
 
+	// --- Classe choisie ---
 	if g.newSaveClass != "" {
 		if g.fontSmall != nil {
 			text.Draw(screen, "Classe choisie: "+g.newSaveClass, g.fontSmall, 600, 540, color.White)
@@ -862,6 +900,7 @@ func (g *Game) drawCreateSave(screen *ebiten.Image) {
 		}
 	}
 
+	// --- Retour ---
 	if g.fontSmall != nil {
 		text.Draw(screen, "Appuie sur ECHAP pour annuler", g.fontSmall, 600, 640, color.White)
 	} else {
@@ -873,21 +912,36 @@ func (g *Game) drawCreateSave(screen *ebiten.Image) {
 // Start game from save
 // -----------------
 func (g *Game) startGameFromSave(s Save) {
-	g.player = NewPlayer(s.PlayerX, s.PlayerY, s.Class) // 👈 le joueur a sa classe
+	g.player = NewPlayer(s.PlayerX, s.PlayerY, s.Class)
 	g.player.Ego = s.Ego
 	g.player.Flow = s.Flow
 	g.player.Charisma = s.Charisma
 	g.Inventaire = NewInventaireFromItems(s.Inventory)
 
-	g.PlayerClass = s.Class // ✅ très important : on garde aussi la classe dans Game
+	g.PlayerClass = s.Class
 
 	g.mapData = NewMap()
+
+	// Création des ennemis
+	enemyTop := NewEnemy(600, 100, "Rival Rapper")
+	enemyBoss := NewEnemy(65, 650, "Boss Rapper")
+
 	g.enemies = []*Enemy{
-		NewEnemy(200, 200, "Rival Rapper"),
-		NewEnemy(400, 300, "Boss Rapper"),
+		enemyTop,
+		enemyBoss,
 	}
+
 	g.inBattle = false
-	g.combatZone = image.Rect(200, 200, 300, 300)
+
+	// Récupérer la taille du sprite pour caler la zone de combat
+	w, h := enemyTop.sprite.Size()
+	g.combatZone = image.Rect(
+		int(enemyTop.X),
+		int(enemyTop.Y),
+		int(enemyTop.X)+w,
+		int(enemyTop.Y)+h,
+	)
+
 	g.state = StatePlaying
 }
 
